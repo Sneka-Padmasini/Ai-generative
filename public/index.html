@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Teaching Assistant</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f9fafb;
+      margin: 0;
+      padding: 0;
+      color: #333;
+    }
+
+    header {
+      background: #2ecc71;
+      color: white;
+      padding: 20px;
+      text-align: center;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 1.8rem;
+    }
+
+    main {
+      max-width: 900px;
+      margin: 20px auto;
+      padding: 20px;
+    }
+
+    section {
+      background: #e8f5e9;
+      padding: 20px;
+      border-radius: 12px;
+      border: 1px solid #a5d6a7;
+      margin-bottom: 20px;
+    }
+
+    h2 {
+      margin-top: 0;
+      font-size: 1.3rem;
+      color: #2e7d32;
+    }
+
+    label {
+      font-weight: 600;
+      display: block;
+      margin-top: 12px;
+      margin-bottom: 5px;
+      color: #2e7d32;
+    }
+
+    input,
+    textarea {
+      width: 100%;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid #81c784;
+      font-size: 1rem;
+      background: #ffffff;
+      box-sizing: border-box;
+    }
+
+    /* Better text area sizes */
+    #originalDescription,
+    #customDescription {
+      min-height: 100px;
+      resize: vertical;
+    }
+
+    #subtopic {
+      max-width: 400px; /* keep it compact */
+    }
+
+    button {
+      margin-top: 15px;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 6px;
+      background: #2ecc71;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+      transition: 0.2s ease;
+    }
+
+    button:hover {
+      background: #27ae60;
+    }
+
+    .question-item {
+      background: #c8e6c9;
+      padding: 10px;
+      border-radius: 6px;
+      margin-bottom: 10px;
+      border-left: 4px solid #2e7d32;
+    }
+
+    video {
+      display: block;
+      width: 100%;
+      border-radius: 12px;
+      margin-top: 15px;
+    }
+
+    #quizDisplay {
+      background: #fffde7;
+      border-left: 6px solid #fbc02d;
+      padding: 15px;
+      border-radius: 8px;
+      display: none;
+    }
+
+    #quizDisplay p {
+      margin: 8px 0;
+    }
+
+    /* Quiz Builder Grid */
+    .two-column {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      align-items: center;
+    }
+
+    .two-column input {
+      height: 45px;
+    }
+
+    @media (max-width: 700px) {
+      .two-column {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>📗 AI Teaching Assistant</h1>
+  </header>
+
+  <main>
+    <!-- Lesson Info -->
+    <section>
+      <h2>Lesson Details</h2>
+      <label>Subtopic:</label>
+      <input type="text" id="subtopic" readonly />
+
+      <label>Lesson Description:</label>
+      <textarea id="originalDescription" readonly></textarea>
+
+      <label>Or Write Your Own:</label>
+      <textarea id="customDescription" placeholder="Type your lesson description here..."></textarea>
+    </section>
+
+    <!-- Quiz Builder -->
+    <section>
+      <h2>📋 Quiz Builder</h2>
+      <div class="two-column">
+        <input type="text" id="questionInput" placeholder="Enter question..." />
+        <input type="text" id="answerInput" placeholder="Enter answer..." />
+      </div>
+      <button onclick="addQuestion()">➕ Add Question</button>
+
+      <div id="questionsList">
+        <h3>✅ Added Questions:</h3>
+        <div id="addedQuestions"></div>
+      </div>
+    </section>
+
+    <!-- Video Section -->
+    <section>
+      <h2>🎥 Lesson Video</h2>
+      <button onclick="generateVideo()">Generate Video</button>
+      <video id="video" controls></video>
+      <button onclick="saveToDatabase()">💾 Save Lesson</button>
+    </section>
+
+    <!-- Quiz Display -->
+    <section id="quizDisplay">
+      <h2>📝 Voice Quiz</h2>
+      <p><strong>Question:</strong> <span id="currentQuestionText"></span></p>
+      <p><strong>Your Answer:</strong> <span id="spokenAnswerText"></span></p>
+      <p><strong>Correct Answer:</strong> <span id="correctAnswerText"></span></p>
+    </section>
+  </main>
+</body>
+</html>
