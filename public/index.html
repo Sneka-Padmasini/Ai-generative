@@ -234,7 +234,7 @@
           document.getElementById("customDescription").value.trim() ||
           document.getElementById("originalDescription").value.trim();
 
-        const res = await fetch("http://localhost:3000/generate-and-upload", {
+        const res = await fetch("/generate-and-upload", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ subtopic, description: descriptionToUse })
@@ -276,7 +276,7 @@
         const videoUrl = document.getElementById("video").src;
         if (!videoUrl) return alert("Please generate video first.");
 
-        const res = await fetch("http://localhost:3000/save-full-data", {
+        const res = await fetch("/save-full-data", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -293,7 +293,7 @@
 
       // === Voice Quiz (robust) ===
       // Toggle this if you want the question also spoken out loud
-      const SPEAK_QUESTIONS = false;
+      const SPEAK_QUESTIONS = true;
 
       // A small UI badge to show listening state
       const listeningBadge = document.createElement('div');
@@ -459,6 +459,12 @@
         const threshold = c.length <= 4 ? 1 : 2;
         return dist <= threshold;
       }
+
+      // ✅ Make functions global so HTML onclick can see them
+      window.addQuestion = addQuestion;
+      window.generateVideo = generateVideo;
+      window.saveToDatabase = saveToDatabase;
+
     });
   </script>
 
