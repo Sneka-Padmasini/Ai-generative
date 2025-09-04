@@ -234,7 +234,7 @@
           document.getElementById("customDescription").value.trim() ||
           document.getElementById("originalDescription").value.trim();
 
-        const res = await fetch("/generate-and-upload", {
+        const res = await fetch("https://ai-generative-rhk1.onrender.com/generate-and-upload", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ subtopic, description: descriptionToUse })
@@ -276,7 +276,7 @@
         const videoUrl = document.getElementById("video").src;
         if (!videoUrl) return alert("Please generate video first.");
 
-        const res = await fetch("/save-full-data", {
+        const res = await fetch("https://ai-generative-rhk1.onrender.com/save-full-data", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -285,6 +285,7 @@
             questions,
             video_url: videoUrl
           })
+
         });
 
         const result = await res.json();
