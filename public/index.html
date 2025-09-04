@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -64,7 +65,6 @@
       box-sizing: border-box;
     }
 
-    /* Better text area sizes */
     #originalDescription,
     #customDescription {
       min-height: 100px;
@@ -72,7 +72,7 @@
     }
 
     #subtopic {
-      max-width: 400px; /* keep it compact */
+      max-width: 400px;
     }
 
     button {
@@ -118,7 +118,6 @@
       margin: 8px 0;
     }
 
-    /* Quiz Builder Grid */
     .two-column {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -137,6 +136,7 @@
     }
   </style>
 </head>
+
 <body>
   <header>
     <h1>📗 AI Teaching Assistant</h1>
@@ -147,7 +147,7 @@
     <section>
       <h2>Lesson Details</h2>
       <label>Subtopic:</label>
-      <input type="text" id="subtopic"/>
+      <input type="text" id="subtopic" />
 
       <label>Lesson Description:</label>
       <textarea id="originalDescription"></textarea>
@@ -163,7 +163,7 @@
         <input type="text" id="questionInput" placeholder="Enter question..." />
         <input type="text" id="answerInput" placeholder="Enter answer..." />
       </div>
-      <button onclick="addQuestion()">➕ Add Question</button>
+      <button type="button" onclick="addQuestion()">➕ Add Question</button>
 
       <div id="questionsList">
         <h3>✅ Added Questions:</h3>
@@ -174,9 +174,11 @@
     <!-- Video Section -->
     <section>
       <h2>🎥 Lesson Video</h2>
-      <button onclick="generateVideo()">Generate Video</button>
+      <button type="button" onclick="generateVideo()">Generate Video</button>
       <video id="video" controls></video>
-      <button onclick="saveToDatabase()">💾 Save Lesson</button>
+      <div id="subtitleBox" style="margin-top:10px; font-size:1.1rem; font-weight:600; color:#2e7d32;">
+      </div>
+      <button type="button" onclick="saveToDatabase()">💾 Save Lesson</button>
     </section>
 
     <!-- Quiz Display -->
@@ -187,5 +189,279 @@
       <p><strong>Correct Answer:</strong> <span id="correctAnswerText"></span></p>
     </section>
   </main>
+
+  <!-- ✅ All JS code goes here -->
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      // --- Read URL Params ---
+      const urlParams = new URLSearchParams(window.location.search);
+      const subtopic = urlParams.get("subtopic") || "";
+      const description = urlParams.get("description") || "";
+
+      console.log("✅ URL Params:", { subtopic, description }); // DEBUG
+
+      // Fill inputs
+      document.getElementById("subtopic").value = subtopic;
+      document.getElementById("originalDescription").value = decodeURIComponent(description);
+
+      // --- Quiz Handling ---
+      const questions = [];
+
+      function addQuestion() {
+        const q = document.getElementById("questionInput").value.trim();
+        const a = document.getElementById("answerInput").value.trim();
+        if (!q || !a) return alert("Please enter both question and answer.");
+        questions.push({ question: q, answer: a });
+        document.getElementById("questionInput").value = "";
+        document.getElementById("answerInput").value = "";
+        updateQuestionDisplay();
+      }
+
+      function updateQuestionDisplay() {
+        const container = document.getElementById("addedQuestions");
+        container.innerHTML = "";
+        questions.forEach((qa, index) => {
+          const div = document.createElement("div");
+          div.className = "question-item";
+          div.innerHTML = `<strong>Q${index + 1}:</strong> ${qa.question}<br/><strong>A:</strong> ${qa.answer}`;
+          container.appendChild(div);
+        });
+      }
+
+      // --- Generate Video ---
+      async function generateVideo() {
+        const descriptionToUse =
+          document.getElementById("customDescription").value.trim() ||
+          document.getElementById("originalDescription").value.trim();
+
+        const res = await fetch("http://localhost:3000/generate-and-upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ subtopic, description: descriptionToUse })
+        });
+
+        const data = await res.json();
+        const video = document.getElementById("video");
+        video.src = data.firebase_video_url;
+        video.onended = () => startVoiceQuiz();
+      }
+
+      // --- Subtitle Simulation ---
+      video.onplay = () => {
+        const descriptionToUse =
+          document.getElementById("customDescription").value.trim() ||
+          document.getElementById("originalDescription").value.trim();
+
+        const lines = descriptionToUse.split(/[.?!]/).filter(x => x.trim());
+        let i = 0;
+        const subtitleBox = document.getElementById("subtitleBox");
+
+        function showNext() {
+          if (i < lines.length && !video.paused && !video.ended) {
+            subtitleBox.textContent = lines[i].trim();
+            i++;
+            setTimeout(showNext, 3000); // change every 3s
+          } else if (video.ended) {
+            subtitleBox.textContent = ""; // clear after video ends
+          }
+        }
+        showNext();
+      };
+
+      // --- Save Lesson ---
+      async function saveToDatabase() {
+        const descriptionToUse =
+          document.getElementById("customDescription").value.trim() ||
+          document.getElementById("originalDescription").value.trim();
+        const videoUrl = document.getElementById("video").src;
+        if (!videoUrl) return alert("Please generate video first.");
+
+        const res = await fetch("http://localhost:3000/save-full-data", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            subtopic,
+            description: descriptionToUse,
+            questions,
+            video_url: videoUrl
+          })
+        });
+
+        const result = await res.json();
+        alert(result.message || "Saved successfully!");
+      }
+
+      // === Voice Quiz (robust) ===
+      // Toggle this if you want the question also spoken out loud
+      const SPEAK_QUESTIONS = false;
+
+      // A small UI badge to show listening state
+      const listeningBadge = document.createElement('div');
+      listeningBadge.textContent = "🎤 Listening…";
+      Object.assign(listeningBadge.style, {
+        position: 'fixed',
+        right: '16px',
+        bottom: '16px',
+        padding: '10px 14px',
+        background: '#2ecc71',
+        color: '#fff',
+        borderRadius: '8px',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+        fontWeight: '600',
+        display: 'none',
+        zIndex: 9999
+      });
+      document.body.appendChild(listeningBadge);
+      const showListening = (on) => (listeningBadge.style.display = on ? 'block' : 'none');
+
+      function startVoiceQuiz() {
+        if (!questions.length) return;
+        let index = 0;
+        const quizBox = document.getElementById("quizDisplay");
+        quizBox.style.display = "block";
+
+        async function askQuestion() {
+          if (index >= questions.length) {
+            speak("Quiz completed. Well done!");
+            quizBox.style.display = "none";
+            return;
+          }
+
+          const current = questions[index];
+
+          // Show the question as text
+          document.getElementById("currentQuestionText").textContent = current.question;
+          document.getElementById("spokenAnswerText").textContent = "...waiting...";
+          document.getElementById("spokenAnswerText").style.color = "#333";
+          document.getElementById("correctAnswerText").textContent = current.answer;
+
+          // Optionally speak the question (TTS)
+          if (SPEAK_QUESTIONS) speak(current.question);
+
+          // Small delay so recognition doesn't catch TTS or UI noises
+          setTimeout(() => {
+            listen((spokenAnswer) => {
+              const ok = isAnswerCorrect(spokenAnswer, current.answer);
+
+              document.getElementById("spokenAnswerText").textContent =
+                spokenAnswer || "(No answer detected)";
+
+              if (ok) {
+                document.getElementById("spokenAnswerText").style.color = "green";
+                speak("Correct answer, well done!");
+              } else {
+                document.getElementById("spokenAnswerText").style.color = "red";
+                speak(`Wrong answer. The correct answer is ${current.answer}`);
+              }
+
+              index++;
+              setTimeout(askQuestion, 1400);
+            });
+          }, SPEAK_QUESTIONS ? 1200 : 400);
+        }
+
+        askQuestion();
+      }
+
+      function speak(text) {
+        const utter = new SpeechSynthesisUtterance(text);
+        utter.lang = 'en-US';
+        speechSynthesis.speak(utter);
+      }
+
+      function listen(callback) {
+        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SR) { alert("Speech recognition not supported"); callback(""); return; }
+
+        // Abort any previous session
+        if (window.activeRecognition) {
+          try { window.activeRecognition.abort(); } catch (_) { }
+        }
+
+        // Stop any TTS that might still be playing
+        try { speechSynthesis.cancel(); } catch (_) { }
+
+        const recognition = new SR();
+        window.activeRecognition = recognition;
+        recognition.lang = "en-US";
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
+        recognition.continuous = false;
+
+        // Mute the video while listening so we don't capture its audio
+        const video = document.getElementById("video");
+        const wasMuted = video.muted;
+        video.muted = true;
+
+        showListening(true);
+        recognition.start();
+
+        recognition.onresult = (event) => {
+          showListening(false);
+          video.muted = wasMuted;
+          const transcript = event.results[0][0].transcript || "";
+          callback(transcript);
+        };
+
+        recognition.onerror = () => {
+          showListening(false);
+          video.muted = wasMuted;
+          callback("");
+        };
+
+        recognition.onend = () => {
+          showListening(false);
+          video.muted = wasMuted;
+        };
+      }
+
+      // === Answer matching utilities (case/punctuation tolerant + fuzzy) ===
+      function normalizeAnswer(s) {
+        if (!s) return "";
+        return s
+          .toLowerCase()
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // strip diacritics
+          .replace(/[^a-z0-9\s]/g, '')                      // remove punctuation
+          .replace(/\b(the|a|an|is|are|was|were|of|to|and|in|on|at|for)\b/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+      }
+
+      function levenshtein(a, b) {
+        const m = a.length, n = b.length;
+        if (m === 0) return n;
+        if (n === 0) return m;
+        const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+        for (let i = 0; i <= m; i++) dp[i][0] = i;
+        for (let j = 0; j <= n; j++) dp[0][j] = j;
+        for (let i = 1; i <= m; i++) {
+          for (let j = 1; j <= n; j++) {
+            const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+            dp[i][j] = Math.min(
+              dp[i - 1][j] + 1,      // deletion
+              dp[i][j - 1] + 1,      // insertion
+              dp[i - 1][j - 1] + cost // substitution
+            );
+          }
+        }
+        return dp[m][n];
+      }
+
+      function isAnswerCorrect(studentRaw, correctRaw) {
+        const s = normalizeAnswer(studentRaw);
+        const c = normalizeAnswer(correctRaw);
+        if (!s) return false;
+        if (s === c) return true;
+        if (s.includes(c) || c.includes(s)) return true;
+
+        // Fuzzy: allow small edit distance
+        const dist = levenshtein(s, c);
+        const threshold = c.length <= 4 ? 1 : 2;
+        return dist <= threshold;
+      }
+    });
+  </script>
+
 </body>
+
 </html>
