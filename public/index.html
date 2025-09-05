@@ -270,6 +270,7 @@
 
       // --- Save Lesson ---
       async function saveToDatabase() {
+        const subtopicToUse = document.getElementById("subtopic").value.trim(); // 👈 take value from input box
         const descriptionToUse =
           document.getElementById("customDescription").value.trim() ||
           document.getElementById("originalDescription").value.trim();
@@ -280,12 +281,11 @@
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            subtopic,
+            subtopic: subtopicToUse,  // 👈 send this value
             description: descriptionToUse,
             questions,
             video_url: videoUrl
           })
-
         });
 
         const result = await res.json();
@@ -293,10 +293,10 @@
       }
 
       // === Voice Quiz (robust) ===
-      // Toggle this if you want the question also spoken out loud
-      const SPEAK_QUESTIONS = true;
+      const SPEAK_QUESTIONS = true;                  // <-- speaks each question
+      const QUESTION_TTS_PAUSE_MS = 800;             // extra gap after TTS before listening
 
-      // A small UI badge to show listening state
+      // listening badge (unchanged)
       const listeningBadge = document.createElement('div');
       listeningBadge.textContent = "🎤 Listening…";
       Object.assign(listeningBadge.style, {
@@ -315,60 +315,16 @@
       document.body.appendChild(listeningBadge);
       const showListening = (on) => (listeningBadge.style.display = on ? 'block' : 'none');
 
-      function startVoiceQuiz() {
-        if (!questions.length) return;
-        let index = 0;
-        const quizBox = document.getElementById("quizDisplay");
-        quizBox.style.display = "block";
-
-        async function askQuestion() {
-          if (index >= questions.length) {
-            speak("Quiz completed. Well done!");
-            quizBox.style.display = "none";
-            return;
-          }
-
-          const current = questions[index];
-
-          // Show the question as text
-          document.getElementById("currentQuestionText").textContent = current.question;
-          document.getElementById("spokenAnswerText").textContent = "...waiting...";
-          document.getElementById("spokenAnswerText").style.color = "#333";
-          document.getElementById("correctAnswerText").textContent = current.answer;
-
-          // Optionally speak the question (TTS)
-          if (SPEAK_QUESTIONS) speak(current.question);
-
-          // Small delay so recognition doesn't catch TTS or UI noises
-          setTimeout(() => {
-            listen((spokenAnswer) => {
-              const ok = isAnswerCorrect(spokenAnswer, current.answer);
-
-              document.getElementById("spokenAnswerText").textContent =
-                spokenAnswer || "(No answer detected)";
-
-              if (ok) {
-                document.getElementById("spokenAnswerText").style.color = "green";
-                speak("Correct answer, well done!");
-              } else {
-                document.getElementById("spokenAnswerText").style.color = "red";
-                speak(`Wrong answer. The correct answer is ${current.answer}`);
-              }
-
-              index++;
-              setTimeout(askQuestion, 1400);
-            });
-          }, SPEAK_QUESTIONS ? 1200 : 400);
-        }
-
-        askQuestion();
-      }
-
       function speak(text) {
-        const utter = new SpeechSynthesisUtterance(text);
-        utter.lang = 'en-US';
-        speechSynthesis.speak(utter);
+        return new Promise((resolve) => {
+          const utter = new SpeechSynthesisUtterance(text);
+          utter.lang = 'en-US';
+          utter.onend = () => resolve();
+          speechSynthesis.speak(utter);
+        });
       }
+
+      function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
       function listen(callback) {
         const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -379,7 +335,7 @@
           try { window.activeRecognition.abort(); } catch (_) { }
         }
 
-        // Stop any TTS that might still be playing
+        // stop any TTS still playing
         try { speechSynthesis.cancel(); } catch (_) { }
 
         const recognition = new SR();
@@ -389,40 +345,38 @@
         recognition.maxAlternatives = 1;
         recognition.continuous = false;
 
-        // Mute the video while listening so we don't capture its audio
-        const video = document.getElementById("video");
-        const wasMuted = video.muted;
-        video.muted = true;
+        const videoEl = document.getElementById("video");
+        const wasMuted = videoEl.muted;
+        videoEl.muted = true;
 
         showListening(true);
         recognition.start();
 
         recognition.onresult = (event) => {
           showListening(false);
-          video.muted = wasMuted;
+          videoEl.muted = wasMuted;
           const transcript = event.results[0][0].transcript || "";
           callback(transcript);
         };
 
         recognition.onerror = () => {
           showListening(false);
-          video.muted = wasMuted;
+          videoEl.muted = wasMuted;
           callback("");
         };
 
         recognition.onend = () => {
           showListening(false);
-          video.muted = wasMuted;
+          videoEl.muted = wasMuted;
         };
       }
 
-      // === Answer matching utilities (case/punctuation tolerant + fuzzy) ===
       function normalizeAnswer(s) {
         if (!s) return "";
         return s
           .toLowerCase()
-          .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // strip diacritics
-          .replace(/[^a-z0-9\s]/g, '')                      // remove punctuation
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-z0-9\s]/g, '')
           .replace(/\b(the|a|an|is|are|was|were|of|to|and|in|on|at|for)\b/g, ' ')
           .replace(/\s+/g, ' ')
           .trim();
@@ -439,32 +393,112 @@
           for (let j = 1; j <= n; j++) {
             const cost = a[i - 1] === b[j - 1] ? 0 : 1;
             dp[i][j] = Math.min(
-              dp[i - 1][j] + 1,      // deletion
-              dp[i][j - 1] + 1,      // insertion
-              dp[i - 1][j - 1] + cost // substitution
+              dp[i - 1][j] + 1,
+              dp[i][j - 1] + 1,
+              dp[i - 1][j - 1] + cost
             );
           }
         }
         return dp[m][n];
       }
 
-      function isAnswerCorrect(studentRaw, correctRaw) {
-        const s = normalizeAnswer(studentRaw);
-        const c = normalizeAnswer(correctRaw);
-        if (!s) return false;
-        if (s === c) return true;
-        if (s.includes(c) || c.includes(s)) return true;
+      // function isAnswerCorrect(studentRaw, correctRaw) {
+      //   const s = normalizeAnswer(studentRaw);
+      //   const c = normalizeAnswer(correctRaw);
+      //   if (!s) return false;
+      //   if (s === c) return true;
+      //   if (s.includes(c) || c.includes(s)) return true;
+      //   const dist = levenshtein(s, c);
+      //   const threshold = c.length <= 4 ? 1 : 2;
+      //   return dist <= threshold;
+      // }
 
-        // Fuzzy: allow small edit distance
-        const dist = levenshtein(s, c);
-        const threshold = c.length <= 4 ? 1 : 2;
-        return dist <= threshold;
+      function isAnswerCorrect(studentRaw, correctRaw) {
+        if (!studentRaw || !correctRaw) return false;
+
+        // ✅ Split into words
+        const correctWords = correctRaw.toLowerCase().trim().split(/\s+/);
+        const spokenWords = studentRaw.toLowerCase().trim().split(/\s+/);
+
+        let matchedCount = 0;
+
+        correctWords.forEach(word => {
+          if (spokenWords.includes(word)) {
+            matchedCount++;
+          }
+        });
+
+        const matchPercentage = (matchedCount / correctWords.length) * 100;
+
+        console.log("Answer Match %:", matchPercentage);
+
+        // ✅ Require at least 80% words to match
+        return matchPercentage >= 80;
       }
 
-      // ✅ Make functions global so HTML onclick can see them
+
+      function startVoiceQuiz() {
+        if (!questions.length) return;
+        let index = 0;
+        const quizBox = document.getElementById("quizDisplay");
+        quizBox.style.display = "block";
+
+        const qText = document.getElementById("currentQuestionText");
+        const aSpoken = document.getElementById("spokenAnswerText");
+        const aCorrect = document.getElementById("correctAnswerText");
+
+        async function askQuestion() {
+          if (index >= questions.length) {
+            await speak("Quiz completed. Well done!");
+            quizBox.style.display = "none";
+            return;
+          }
+
+          const current = questions[index];
+
+          // Show ONLY the question first; hide the answer now
+          qText.textContent = current.question;
+          aSpoken.textContent = "...waiting...";
+          aSpoken.style.color = "#333";
+          aCorrect.textContent = "";                 // <-- hide answer until after
+
+          // Optionally speak the question
+          if (SPEAK_QUESTIONS) {
+            await speak(current.question);
+            await delay(QUESTION_TTS_PAUSE_MS);      // gap before listening
+          } else {
+            await delay(400);
+          }
+
+          // Listen for student's answer
+          listen(async (spokenAnswer) => {
+            const ok = isAnswerCorrect(spokenAnswer, current.answer);
+
+            aSpoken.textContent = spokenAnswer || "(No answer detected)";
+            aSpoken.style.color = ok ? "green" : "red";
+
+            // NOW reveal the correct answer (after student answered)
+            aCorrect.textContent = current.answer;
+
+            if (ok) {
+              await speak("Correct answer, well done!");
+            } else {
+              await speak(`Wrong answer. The correct answer is ${current.answer}`);
+            }
+
+            index++;
+            setTimeout(askQuestion, 900);
+          });
+        }
+
+        askQuestion();
+      }
+
+      // expose functions used by inline onclick handlers
       window.addQuestion = addQuestion;
       window.generateVideo = generateVideo;
       window.saveToDatabase = saveToDatabase;
+      window.startVoiceQuiz = startVoiceQuiz;
 
     });
   </script>
