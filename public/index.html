@@ -129,6 +129,28 @@
       height: 45px;
     }
 
+    .spinner {
+      border: 6px solid #f3f3f3;
+      /* Light gray */
+      border-top: 6px solid #4CAF50;
+      /* Green */
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto;
+    }
+
+    @keyframes spin {
+      0% {
+        transform: rotate(0deg);
+      }
+
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+
     @media (max-width: 700px) {
       .two-column {
         grid-template-columns: 1fr;
@@ -175,11 +197,23 @@
     <section>
       <h2>🎥 Lesson Video</h2>
       <button type="button" onclick="generateVideo()">Generate Video</button>
+
+      <!-- Video Player -->
       <video id="video" controls></video>
-      <div id="subtitleBox" style="margin-top:10px; font-size:1.1rem; font-weight:600; color:#2e7d32;">
+
+      <!-- ✅ Loading Spinner + Message -->
+      <div id="loadingMessage" style="display: none; text-align: center; margin-top: 20px;">
+        <div class="spinner"></div>
+        <p style="font-size: 1.2rem; color: #555; margin-top: 10px;">Generating your AI video, please wait...</p>
       </div>
+
+      <!-- Subtitle Box -->
+      <div id="subtitleBox" style="margin-top:10px; font-size:1.1rem; font-weight:600; color:#2e7d32;"></div>
+
+      <!-- Save Button -->
       <button type="button" onclick="saveToDatabase()">💾 Save Lesson</button>
     </section>
+
 
     <!-- Quiz Display -->
     <section id="quizDisplay">
@@ -234,16 +268,32 @@
           document.getElementById("customDescription").value.trim() ||
           document.getElementById("originalDescription").value.trim();
 
-        const res = await fetch("https://ai-generative-rhk1.onrender.com/generate-and-upload", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ subtopic, description: descriptionToUse })
-        });
-
-        const data = await res.json();
+        const loading = document.getElementById("loadingMessage");
         const video = document.getElementById("video");
-        video.src = data.firebase_video_url;
-        video.onended = () => startVoiceQuiz();
+
+        // Show loading spinner + message, hide video while waiting
+        loading.style.display = "block";
+        video.style.display = "none";
+
+        try {
+          const res = await fetch("https://ai-generative-rhk1.onrender.com/generate-and-upload", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ subtopic, description: descriptionToUse })
+          });
+
+          const data = await res.json();
+
+          // Hide loading, show video
+          loading.style.display = "none";
+          video.style.display = "block";
+
+          video.src = data.firebase_video_url;
+          video.onended = () => startVoiceQuiz();
+        } catch (err) {
+          console.error("❌ Error generating video:", err);
+          loading.innerHTML = `<p style="color:red;">❌ Failed to generate video. Try again.</p>`;
+        }
       }
 
       // --- Subtitle Simulation ---
@@ -267,6 +317,7 @@
         }
         showNext();
       };
+
 
       // --- Save Lesson ---
       async function saveToDatabase() {
