@@ -169,7 +169,7 @@
     <section>
       <h2>Lesson Details</h2>
       <label>Subtopic:</label>
-      <input type="text" id="subtopic" readonly/>
+      <input type="text" id="subtopic" readonly />
 
       <label>Lesson Description:</label>
       <textarea id="originalDescription" readonly></textarea>
@@ -229,7 +229,7 @@
     document.addEventListener("DOMContentLoaded", () => {
       // --- Read URL Params ---
       const urlParams = new URLSearchParams(window.location.search);
-      const REACT_HOME_URL = "https://genuine-sopapillas-c1e756.netlify.app/";
+      const returnTo = urlParams.get("returnTo") || "https://genuine-sopapillas-c1e756.netlify.app/";
       const subtopic = urlParams.get("subtopic") || "";
       const description = urlParams.get("description") || "";
 
@@ -319,56 +319,48 @@
         showNext();
       };
 
+      function addOrUpdateParam(url, key, value) {
+        try {
+          const u = new URL(url);
+          u.searchParams.set(key, value);
+          return u.toString();
+        } catch {
+          // if returnTo was somehow a relative path, fall back safely
+          return url + (url.includes("?") ? "&" : "?") + `${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
+        }
+      }
 
       // --- Save Lesson ---
       async function saveToDatabase() {
-        const subtopicToUse = (document.getElementById("subtopic")?.value || "").trim();
+        const subtopicToUse = document.getElementById("subtopic").value.trim();
         const descriptionToUse =
-          (document.getElementById("customDescription")?.value || "").trim() ||
-          (document.getElementById("originalDescription")?.value || "").trim();
+          document.getElementById("customDescription").value.trim() ||
+          document.getElementById("originalDescription").value.trim();
+        const videoUrl = document.getElementById("video").src;
+        if (!videoUrl) return alert("Please generate video first.");
 
-        const videoUrl = document.getElementById("video")?.src || "";
+        const res = await fetch("https://ai-generative-rhk1.onrender.com/save-full-data", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            subtopic: subtopicToUse,
+            description: descriptionToUse,
+            questions,
+            video_url: videoUrl
+          })
+        });
 
-        // ✅ Validate before saving
-        if (!videoUrl) {
-          alert("⚠️ Please generate the video first.");
-          return;
-        }
-        if (!subtopicToUse) {
-          alert("⚠️ Subtopic is required before saving.");
-          return;
-        }
-        if (!descriptionToUse) {
-          alert("⚠️ Description is required before saving.");
-          return;
-        }
+        const result = await res.json();
 
-        try {
-          const res = await fetch("https://ai-generative-rhk1.onrender.com/save-full-data", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              subtopic: subtopicToUse,
-              description: descriptionToUse,
-              questions,
-              video_url: videoUrl,
-            }),
-          });
-
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            console.error("❌ Save failed:", err);
-            alert("❌ Failed to save lesson. Please try again.");
-            return;
-          }
-
-          const result = await res.json();
-          alert(result.message || "✅ Lesson saved successfully!");
-        } catch (err) {
-          console.error("❌ Network error:", err);
-          alert("❌ Could not connect to server. Try again later.");
+        if (result && result.message) {
+          // Go back to EXACT React page, adding ?saved=true (or &saved=true)
+          const backUrl = addOrUpdateParam(returnTo, "saved", "true");
+          window.location.href = backUrl;
+        } else {
+          alert("Save failed, please try again!");
         }
       }
+
 
 
       // === Voice Quiz (robust) ===
