@@ -169,10 +169,10 @@
     <section>
       <h2>Lesson Details</h2>
       <label>Subtopic:</label>
-      <input type="text" id="subtopic" />
+      <input type="text" id="subtopic" readonly/>
 
       <label>Lesson Description:</label>
-      <textarea id="originalDescription"></textarea>
+      <textarea id="originalDescription" readonly></textarea>
 
       <label>Or Write Your Own:</label>
       <textarea id="customDescription" placeholder="Type your lesson description here..."></textarea>
@@ -229,6 +229,7 @@
     document.addEventListener("DOMContentLoaded", () => {
       // --- Read URL Params ---
       const urlParams = new URLSearchParams(window.location.search);
+      const REACT_HOME_URL = "https://genuine-sopapillas-c1e756.netlify.app/";
       const subtopic = urlParams.get("subtopic") || "";
       const description = urlParams.get("description") || "";
 
@@ -321,27 +322,54 @@
 
       // --- Save Lesson ---
       async function saveToDatabase() {
-        const subtopicToUse = document.getElementById("subtopic").value.trim(); // 👈 take value from input box
+        const subtopicToUse = (document.getElementById("subtopic")?.value || "").trim();
         const descriptionToUse =
-          document.getElementById("customDescription").value.trim() ||
-          document.getElementById("originalDescription").value.trim();
-        const videoUrl = document.getElementById("video").src;
-        if (!videoUrl) return alert("Please generate video first.");
+          (document.getElementById("customDescription")?.value || "").trim() ||
+          (document.getElementById("originalDescription")?.value || "").trim();
 
-        const res = await fetch("https://ai-generative-rhk1.onrender.com/save-full-data", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            subtopic: subtopicToUse,  // 👈 send this value
-            description: descriptionToUse,
-            questions,
-            video_url: videoUrl
-          })
-        });
+        const videoUrl = document.getElementById("video")?.src || "";
 
-        const result = await res.json();
-        alert(result.message || "Saved successfully!");
+        // ✅ Validate before saving
+        if (!videoUrl) {
+          alert("⚠️ Please generate the video first.");
+          return;
+        }
+        if (!subtopicToUse) {
+          alert("⚠️ Subtopic is required before saving.");
+          return;
+        }
+        if (!descriptionToUse) {
+          alert("⚠️ Description is required before saving.");
+          return;
+        }
+
+        try {
+          const res = await fetch("https://ai-generative-rhk1.onrender.com/save-full-data", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              subtopic: subtopicToUse,
+              description: descriptionToUse,
+              questions,
+              video_url: videoUrl,
+            }),
+          });
+
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            console.error("❌ Save failed:", err);
+            alert("❌ Failed to save lesson. Please try again.");
+            return;
+          }
+
+          const result = await res.json();
+          alert(result.message || "✅ Lesson saved successfully!");
+        } catch (err) {
+          console.error("❌ Network error:", err);
+          alert("❌ Could not connect to server. Try again later.");
+        }
       }
+
 
       // === Voice Quiz (robust) ===
       const SPEAK_QUESTIONS = true;                  // <-- speaks each question
@@ -453,16 +481,6 @@
         return dp[m][n];
       }
 
-      // function isAnswerCorrect(studentRaw, correctRaw) {
-      //   const s = normalizeAnswer(studentRaw);
-      //   const c = normalizeAnswer(correctRaw);
-      //   if (!s) return false;
-      //   if (s === c) return true;
-      //   if (s.includes(c) || c.includes(s)) return true;
-      //   const dist = levenshtein(s, c);
-      //   const threshold = c.length <= 4 ? 1 : 2;
-      //   return dist <= threshold;
-      // }
 
       function isAnswerCorrect(studentRaw, correctRaw) {
         if (!studentRaw || !correctRaw) return false;
