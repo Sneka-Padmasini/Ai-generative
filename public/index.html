@@ -330,6 +330,37 @@
         }
       }
 
+      // // --- Save Lesson ---
+      // async function saveToDatabase() {
+      //   const subtopicToUse = document.getElementById("subtopic").value.trim();
+      //   const descriptionToUse =
+      //     document.getElementById("customDescription").value.trim() ||
+      //     document.getElementById("originalDescription").value.trim();
+      //   const videoUrl = document.getElementById("video").src;
+      //   if (!videoUrl) return alert("Please generate video first.");
+
+      //   const res = await fetch("https://ai-generative-rhk1.onrender.com/save-full-data", {
+      //     method: "POST",
+      //     headers: { "Content-Type": "application/json" },
+      //     body: JSON.stringify({
+      //       subtopic: subtopicToUse,
+      //       description: descriptionToUse,
+      //       questions,
+      //       video_url: videoUrl
+      //     })
+      //   });
+
+      //   const result = await res.json();
+
+      //   if (result && result.message) {
+      //     // Go back to EXACT React page, adding ?saved=true (or &saved=true)
+      //     const backUrl = addOrUpdateParam(returnTo, "saved", "true");
+      //     window.location.href = backUrl;
+      //   } else {
+      //     alert("Save failed, please try again!");
+      //   }
+      // }
+
       // --- Save Lesson ---
       async function saveToDatabase() {
         const subtopicToUse = document.getElementById("subtopic").value.trim();
@@ -337,27 +368,44 @@
           document.getElementById("customDescription").value.trim() ||
           document.getElementById("originalDescription").value.trim();
         const videoUrl = document.getElementById("video").src;
+
         if (!videoUrl) return alert("Please generate video first.");
 
-        const res = await fetch("https://ai-generative-rhk1.onrender.com/save-full-data", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            subtopic: subtopicToUse,
-            description: descriptionToUse,
-            questions,
-            video_url: videoUrl
-          })
-        });
+        try {
+          // 1️⃣ Save to AI Generator App (keep old behavior)
+          const res = await fetch("https://ai-generative-rhk1.onrender.com/save-full-data", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              subtopic: subtopicToUse,
+              description: descriptionToUse,
+              questions,
+              video_url: videoUrl
+            })
+          });
 
-        const result = await res.json();
+          const result = await res.json();
 
-        if (result && result.message) {
-          // Go back to EXACT React page, adding ?saved=true (or &saved=true)
-          const backUrl = addOrUpdateParam(returnTo, "saved", "true");
-          window.location.href = backUrl;
-        } else {
-          alert("Save failed, please try again!");
+          // 2️⃣ ALSO save video URL to Spring Boot backend (main DB)
+          await fetch("https://studentpadmasini.onrender.com/api/content/addVideo", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              subtopicId: subtopicToUse, // ⚠️ Must be the MongoDB _id of the subtopic
+              videoUrl: videoUrl
+            })
+          });
+
+          // 3️⃣ Redirect back to Admin page like before
+          if (result && result.message) {
+            const backUrl = addOrUpdateParam(returnTo, "saved", "true");
+            window.location.href = backUrl;
+          } else {
+            alert("Save failed, please try again!");
+          }
+        } catch (err) {
+          console.error("Error in saveToDatabase:", err);
+          alert("❌ Something went wrong while saving.");
         }
       }
 
