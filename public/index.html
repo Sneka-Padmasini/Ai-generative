@@ -230,13 +230,15 @@
       // --- Read URL Params ---
       const urlParams = new URLSearchParams(window.location.search);
       const returnTo = urlParams.get("returnTo") || "https://genuine-sopapillas-c1e756.netlify.app/";
-      const subtopic = urlParams.get("subtopic") || "";
+      // const subtopic = urlParams.get("subtopic") || "";
+      const subtopicId = urlParams.get("subtopicId") || "";
       const description = urlParams.get("description") || "";
 
       console.log("✅ URL Params:", { subtopic, description }); // DEBUG
 
       // Fill inputs
-      document.getElementById("subtopic").value = subtopic;
+      // document.getElementById("subtopic").value = subtopic;
+      document.getElementById("subtopic").value = subtopicId;
       document.getElementById("originalDescription").value = decodeURIComponent(description);
 
       // --- Quiz Handling ---
