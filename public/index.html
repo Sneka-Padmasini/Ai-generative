@@ -285,11 +285,7 @@
           const res = await fetch("https://ai-generative-rhk1.onrender.com/generate-and-upload", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            // body: JSON.stringify({ subtopic, description: descriptionToUse })
-            body: JSON.stringify({
-              subtopic: subtopicName,   // ✅ use subtopicName instead of undefined "subtopic"
-              description: descriptionToUse
-            })
+            body: JSON.stringify({ subtopic, description: descriptionToUse })
           });
 
           const data = await res.json();
@@ -386,19 +382,12 @@
           const res = await fetch("https://ai-generative-rhk1.onrender.com/save-full-data", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            // body: JSON.stringify({
-            //   subtopic: subtopicToUse,
-            //   description: descriptionToUse,
-            //   questions,
-            //   video_url: videoUrl
-            // })
             body: JSON.stringify({
-              subtopic: subtopicName,   // ✅ pass the actual subtitle
+              subtopic: subtopicToUse,
               description: descriptionToUse,
               questions,
               video_url: videoUrl
             })
-
           });
 
           const result = await res.json();
