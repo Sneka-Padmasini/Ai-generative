@@ -231,17 +231,12 @@
       const urlParams = new URLSearchParams(window.location.search);
       const returnTo = urlParams.get("returnTo") || "https://genuine-sopapillas-c1e756.netlify.app/";
       const subtopic = urlParams.get("subtopic") || "";
-      const subtopicId = urlParams.get("subtopicId") || "";
-      const subtopicName = urlParams.get("subtopicName") || "";
       const description = urlParams.get("description") || "";
 
       console.log("✅ URL Params:", { subtopic, description }); // DEBUG
 
       // Fill inputs
-      // document.getElementById("subtopic").value = subtopic;
-      // document.getElementById("subtopic").value = subtopicId;
-      document.getElementById("subtopic").value = subtopicName;
-
+      document.getElementById("subtopic").value = subtopic;
       document.getElementById("originalDescription").value = decodeURIComponent(description);
 
       // --- Quiz Handling ---
@@ -368,8 +363,7 @@
 
       // --- Save Lesson ---
       async function saveToDatabase() {
-        // const subtopicToUse = document.getElementById("subtopic").value.trim();
-        const subtopicToUse = subtopicId; // use the ID for saving in DB
+        const subtopicToUse = document.getElementById("subtopic").value.trim();
         const descriptionToUse =
           document.getElementById("customDescription").value.trim() ||
           document.getElementById("originalDescription").value.trim();
