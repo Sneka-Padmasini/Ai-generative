@@ -232,13 +232,16 @@
       const returnTo = urlParams.get("returnTo") || "https://genuine-sopapillas-c1e756.netlify.app/";
       // const subtopic = urlParams.get("subtopic") || "";
       const subtopicId = urlParams.get("subtopicId") || "";
+      const subtopicName = urlParams.get("subtopicName") || "";
       const description = urlParams.get("description") || "";
 
       console.log("✅ URL Params:", { subtopic, description }); // DEBUG
 
       // Fill inputs
       // document.getElementById("subtopic").value = subtopic;
-      document.getElementById("subtopic").value = subtopicId;
+      // document.getElementById("subtopic").value = subtopicId;
+      document.getElementById("subtopic").value = subtopicName;
+
       document.getElementById("originalDescription").value = decodeURIComponent(description);
 
       // --- Quiz Handling ---
@@ -282,7 +285,11 @@
           const res = await fetch("https://ai-generative-rhk1.onrender.com/generate-and-upload", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ subtopic, description: descriptionToUse })
+            // body: JSON.stringify({ subtopic, description: descriptionToUse })
+            body: JSON.stringify({
+              subtopic: subtopicName,   // ✅ use subtopicName instead of undefined "subtopic"
+              description: descriptionToUse
+            })
           });
 
           const data = await res.json();
@@ -365,7 +372,8 @@
 
       // --- Save Lesson ---
       async function saveToDatabase() {
-        const subtopicToUse = document.getElementById("subtopic").value.trim();
+        // const subtopicToUse = document.getElementById("subtopic").value.trim();
+        const subtopicToUse = subtopicId; // use the ID for saving in DB
         const descriptionToUse =
           document.getElementById("customDescription").value.trim() ||
           document.getElementById("originalDescription").value.trim();
@@ -378,12 +386,19 @@
           const res = await fetch("https://ai-generative-rhk1.onrender.com/save-full-data", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
+            // body: JSON.stringify({
+            //   subtopic: subtopicToUse,
+            //   description: descriptionToUse,
+            //   questions,
+            //   video_url: videoUrl
+            // })
             body: JSON.stringify({
-              subtopic: subtopicToUse,
+              subtopic: subtopicName,   // ✅ pass the actual subtitle
               description: descriptionToUse,
               questions,
               video_url: videoUrl
             })
+
           });
 
           const result = await res.json();
