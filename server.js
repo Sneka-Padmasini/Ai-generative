@@ -2,7 +2,7 @@
 const express = require("express");
 const axios = require("axios");
 const cors = require("cors");
-const { MongoClient } = require("mongodb");
+const { MongoClient, ObjectId } = require("mongodb");
 const path = require("path");
 require("dotenv").config();
 
@@ -42,7 +42,7 @@ const DID_API_KEY = `Basic ${Buffer.from(process.env.DID_API_KEY).toString("base
 
 // ✅ Route: Generate Video from D-ID
 app.post("/generate-and-upload", async (req, res) => {
-  const { subtopic, description } = req.body; // ⬅️ Only subtopic + description
+  const { subtopicId, subtopicName, description } = req.body; // ✅ Updated
 
   try {
     const didResponse = await axios.post(
@@ -95,11 +95,13 @@ app.post("/generate-and-upload", async (req, res) => {
 
 // ✅ Route: Save to MongoDB
 app.post("/save-full-data", async (req, res) => {
-  const { subtopic, description, questions, video_url } = req.body;
+  const { subtopicId, subtopicName, description, questions, video_url } = req.body;
 
   try {
+    // 1️⃣ Save to AI generator collection (old behavior)
     const doc = {
-      subtopic,
+      subtopicId,      // Mongo _id
+      subtopicName,    // title
       description,
       video_url,
       questions,
@@ -107,6 +109,19 @@ app.post("/save-full-data", async (req, res) => {
     };
 
     await collection.insertOne(doc);
+
+    // 2️⃣ Update the main MongoDB document with video URL
+    if (subtopicId) {
+      const result = await collection.updateOne(
+        { _id: new ObjectId(subtopicId) },
+        { $set: { videoUrl: video_url } }
+      );
+
+      if (result.matchedCount === 0) {
+        console.warn(`⚠️ No document found with _id: ${subtopicId}`);
+      }
+    }
+
     res.json({ message: "✅ Data saved successfully." });
   } catch (err) {
     console.error("❌ MongoDB Save Error:", err.message);

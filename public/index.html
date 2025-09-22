@@ -241,7 +241,7 @@
       const description = urlParams.get("description") || "";
 
 
-      console.log("✅ URL Params:", { subtopic, description }); // DEBUG
+      console.log("✅ URL Params:", { subtopicId, subtopicName, description }); // DEBUG
 
       // Fill inputs
       // document.getElementById("subtopic").value = subtopic;
@@ -290,7 +290,12 @@
           const res = await fetch("https://ai-generative-rhk1.onrender.com/generate-and-upload", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ subtopic, description: descriptionToUse })
+            // body: JSON.stringify({ subtopic, description: descriptionToUse })
+            body: JSON.stringify({
+              subtopicId,       // Mongo _id
+              subtopicName,     // title
+              description: descriptionToUse
+            })
           });
 
           const data = await res.json();
