@@ -234,13 +234,19 @@
       // --- Read URL Params ---
       const urlParams = new URLSearchParams(window.location.search);
       const returnTo = urlParams.get("returnTo") || "https://genuine-sopapillas-c1e756.netlify.app/";
-      const subtopic = urlParams.get("subtopic") || "";
+      // const subtopic = urlParams.get("subtopic") || "";
+      // const description = urlParams.get("description") || "";
+      const subtopicId = urlParams.get("subtopicId") || "";
+      const subtopicName = urlParams.get("subtopicName") || "";
       const description = urlParams.get("description") || "";
+
 
       console.log("✅ URL Params:", { subtopic, description }); // DEBUG
 
       // Fill inputs
-      document.getElementById("subtopic").value = subtopic;
+      // document.getElementById("subtopic").value = subtopic;
+      document.getElementById("subtopic").value = subtopicName;
+
       document.getElementById("originalDescription").value = decodeURIComponent(description);
 
       // --- Quiz Handling ---
@@ -391,14 +397,23 @@
           const result = await res.json();
 
           // 2️⃣ ALSO save video URL to Spring Boot backend (main DB)
+          // await fetch("https://studentpadmasini.onrender.com/api/content/addVideo", {
+          //   method: "POST",
+          //   headers: { "Content-Type": "application/json" },
+          //   body: JSON.stringify({
+          //     subtopicId: subtopicToUse, // ⚠️ Must be the MongoDB _id of the subtopic
+          //     videoUrl: videoUrl
+          //   })
+          // });
           await fetch("https://studentpadmasini.onrender.com/api/content/addVideo", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              subtopicId: subtopicToUse, // ⚠️ Must be the MongoDB _id of the subtopic
+              subtopicId: subtopicId,   // ✅ real Mongo _id from React
               videoUrl: videoUrl
             })
           });
+
 
           // 3️⃣ Redirect back to Admin page like before
           if (result && result.message) {
