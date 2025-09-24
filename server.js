@@ -49,7 +49,7 @@ app.post("/generate-and-upload", async (req, res) => {
       "https://api.d-id.com/talks",
       {
         script: {
-          type: "text",
+          type: "text", 
           input: description,
           subtitles: "false",
         },
@@ -103,7 +103,7 @@ app.post("/save-full-data", async (req, res) => {
       subtopicId,      // Mongo _id
       subtopicName,    // title
       description,
-      video_url,
+      videoUrl: video_url,
       questions,
       date_added: new Date(),
     };

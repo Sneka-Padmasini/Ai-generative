@@ -392,6 +392,8 @@
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
+              subtopicId: subtopicId,   // ✅ real Mongo _id from React
+              subtopicName: subtopicToUse, // title
               subtopic: subtopicToUse,
               description: descriptionToUse,
               questions,
