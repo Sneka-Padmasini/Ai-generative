@@ -9,67 +9,63 @@ require("dotenv").config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ✅ Middleware
-app.use(cors());
+// ================= MIDDLEWARE =================
+app.use(cors()); // ⚠️ For production, restrict to your frontend domain
 app.use(express.json());
-
-// ✅ Serve static files from "public" folder (e.g. index.html, CSS, JS)
 app.use(express.static(path.join(__dirname, "public")));
 
-// ✅ Serve index.html at "/"
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
-});
-
-// ✅ MongoDB Connection (from .env)
+// ================= MONGODB CONNECTION =================
 const MONGO_URI = process.env.MONGO_URI;
 if (!MONGO_URI) {
-  console.error("❌ Missing MONGO_URI in .env file");
+  console.error("❌ Missing MONGO_URI in .env");
   process.exit(1);
 }
 
 const client = new MongoClient(MONGO_URI);
-let collection;
+let db;
 
-client.connect().then(() => {
-  const db = client.db("ai_teacher");
-  collection = db.collection("lessons");
-  console.log("✅ Connected to MongoDB");
+async function initMongo() {
+  try {
+    await client.connect();
+    db = client.db("professional");
+    console.log("✅ Connected to MongoDB");
+  } catch (err) {
+    console.error("❌ MongoDB connection failed:", err);
+    process.exit(1);
+  }
+}
+initMongo();
+
+// ================= D-ID CONFIG =================
+const DID_API_KEY = `Bearer ${process.env.DID_API_KEY}`;
+
+// ================= ROUTES =================
+
+// Serve frontend
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-// ✅ D-ID API Key (from .env, already Base64 encoded)
-const DID_API_KEY = `Basic ${Buffer.from(process.env.DID_API_KEY).toString("base64")}`;
-
-// ✅ Route: Generate Video from D-ID
+// Generate AI video using D-ID
 app.post("/generate-and-upload", async (req, res) => {
-  const { subtopicId, subtopicName, description } = req.body; // ✅ Updated
+  const { subtopicId, subtopicName, description } = req.body;
 
   try {
     const didResponse = await axios.post(
       "https://api.d-id.com/talks",
       {
-        script: {
-          type: "text", 
-          input: description,
-          subtitles: "false",
-        },
-        presenter_id: "amy-jcwq6j4g", // Replace with your own presenter_id if needed
+        script: { type: "text", input: description, subtitles: "false" },
+        presenter_id: "amy-jcwq6j4g",
       },
-      {
-        headers: {
-          Authorization: DID_API_KEY,
-          "Content-Type": "application/json",
-        },
-      }
+      { headers: { Authorization: DID_API_KEY, "Content-Type": "application/json" } }
     );
 
     const talkId = didResponse.data.id;
-
-    // Poll until video is ready
     let videoUrl = "";
     let status = "notDone";
+    let retries = 0;
 
-    while (status !== "done") {
+    while (status !== "done" && retries < 30) { // max 60s
       const poll = await axios.get(`https://api.d-id.com/talks/${talkId}`, {
         headers: { Authorization: DID_API_KEY },
       });
@@ -78,49 +74,50 @@ app.post("/generate-and-upload", async (req, res) => {
       if (status === "done") {
         videoUrl = poll.data.result_url;
       } else {
-        await new Promise((r) => setTimeout(r, 2000));
+        await new Promise(r => setTimeout(r, 2000));
+        retries++;
       }
+    }
+
+    if (status !== "done") {
+      return res.status(500).json({ error: "Video generation timed out" });
     }
 
     res.json({ firebase_video_url: videoUrl });
   } catch (err) {
-    if (err.response) {
-      console.error("❌ D-ID Error:", err.response.status, err.response.data);
-    } else {
-      console.error("❌ D-ID Error:", err.message);
-    }
+    console.error("❌ D-ID Error:", err.response?.data || err.message);
     res.status(500).json({ error: "Video generation failed" });
   }
 });
 
-// ✅ Route: Save to MongoDB
+// Save lesson to MongoDB
 app.post("/save-full-data", async (req, res) => {
-  const { subtopicId, subtopicName, description, questions, video_url } = req.body;
+  if (!db) return res.status(500).json({ error: "Database not connected yet" });
+
+  const { subtopicId, subtopicName, description, questions, video_url, subjectName } = req.body;
+  const collectionName = subjectName?.trim() || "General";
+  const collection = db.collection(collectionName);
 
   try {
-    // 1️⃣ Save to AI generator collection (old behavior)
-    const doc = {
-      subtopicId,      // Mongo _id
-      subtopicName,    // title
-      description,
-      videoUrl: video_url,
-      questions,
-      date_added: new Date(),
+    let filter = {};
+    if (subtopicId && ObjectId.isValid(subtopicId)) {
+      filter = { _id: new ObjectId(subtopicId) };
+    } else {
+      // generate new ObjectId for new document
+      filter = { _id: new ObjectId() };
+    }
+
+    const update = {
+      $set: {
+        subtopicName,
+        description,
+        videoUrl: video_url,
+        questions,
+        date_added: new Date(),
+      },
     };
 
-    await collection.insertOne(doc);
-
-    // 2️⃣ Update the main MongoDB document with video URL
-    if (subtopicId) {
-      const result = await collection.updateOne(
-        { _id: new ObjectId(subtopicId) },
-        { $set: { videoUrl: video_url } }
-      );
-
-      if (result.matchedCount === 0) {
-        console.warn(`⚠️ No document found with _id: ${subtopicId}`);
-      }
-    }
+    await collection.updateOne(filter, update, { upsert: true });
 
     res.json({ message: "✅ Data saved successfully." });
   } catch (err) {
@@ -129,7 +126,8 @@ app.post("/save-full-data", async (req, res) => {
   }
 });
 
-// ✅ Start Server
+
+// Start server
 app.listen(PORT, () => {
   console.log(`✅ Server running at http://localhost:${PORT}`);
 });

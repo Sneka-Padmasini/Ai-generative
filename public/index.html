@@ -169,7 +169,7 @@
     <section>
       <h2>Lesson Details</h2>
       <label>Subtopic:</label>
-      <input type="text" id="subtopic" readonly />
+      <input type="text" id="subtopic" readonly/>
       <!-- <input type="text" id="subtopic" /> -->
 
 
@@ -377,64 +377,110 @@
       // }
 
       // --- Save Lesson ---
+      // async function saveToDatabase() {
+      //   const subtopicToUse = document.getElementById("subtopic").value.trim();
+      //   const descriptionToUse =
+      //     document.getElementById("customDescription").value.trim() ||
+      //     document.getElementById("originalDescription").value.trim();
+      //   const videoUrl = document.getElementById("video").src;
+
+      //   if (!videoUrl) return alert("Please generate video first.");
+
+      //   try {
+      //     // 1️⃣ Save to AI Generator App (keep old behavior)
+      //     const res = await fetch("https://ai-generative-rhk1.onrender.com/save-full-data", {
+      //       method: "POST",
+      //       headers: { "Content-Type": "application/json" },
+      //       body: JSON.stringify({
+      //         subtopicId: subtopicId,   // ✅ real Mongo _id from React
+      //         subtopicName: subtopicToUse, // title
+      //         subtopic: subtopicToUse,
+      //         description: descriptionToUse,
+      //         questions,
+      //         video_url: videoUrl
+      //       })
+      //     });
+
+      //     const result = await res.json();
+
+      //     // 2️⃣ ALSO save video URL to Spring Boot backend (main DB)
+      //     // await fetch("https://studentpadmasini.onrender.com/api/content/addVideo", {
+      //     //   method: "POST",
+      //     //   headers: { "Content-Type": "application/json" },
+      //     //   body: JSON.stringify({
+      //     //     subtopicId: subtopicToUse, // ⚠️ Must be the MongoDB _id of the subtopic
+      //     //     videoUrl: videoUrl
+      //     //   })
+      //     // });
+      //     await fetch("https://studentpadmasini.onrender.com/api/content/addVideo", {
+      //       method: "POST",
+      //       headers: { "Content-Type": "application/json" },
+      //       body: JSON.stringify({
+      //         subtopicId: subtopicId,   // ✅ real Mongo _id from React
+      //         videoUrl: videoUrl
+      //       })
+      //     });
+
+
+      //     // 3️⃣ Redirect back to Admin page like before
+      //     if (result && result.message) {
+      //       const backUrl = addOrUpdateParam(returnTo, "saved", "true");
+      //       window.location.href = backUrl;
+      //     } else {
+      //       alert("Save failed, please try again!");
+      //     }
+      //   } catch (err) {
+      //     console.error("Error in saveToDatabase:", err);
+      //     alert("❌ Something went wrong while saving.");
+      //   }
+      // }
+
+      
       async function saveToDatabase() {
-        const subtopicToUse = document.getElementById("subtopic").value.trim();
-        const descriptionToUse =
-          document.getElementById("customDescription").value.trim() ||
-          document.getElementById("originalDescription").value.trim();
-        const videoUrl = document.getElementById("video").src;
+  const subtopicToUse = document.getElementById("subtopic").value.trim();
+  const descriptionToUse =
+    document.getElementById("customDescription").value.trim() ||
+    document.getElementById("originalDescription").value.trim();
+  const videoUrl = document.getElementById("video").src;
 
-        if (!videoUrl) return alert("Please generate video first.");
+  if (!videoUrl) return alert("Please generate video first.");
+  if (!subtopicToUse || !descriptionToUse) return alert("Subtopic and description cannot be empty.");
 
-        try {
-          // 1️⃣ Save to AI Generator App (keep old behavior)
-          const res = await fetch("https://ai-generative-rhk1.onrender.com/save-full-data", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              subtopicId: subtopicId,   // ✅ real Mongo _id from React
-              subtopicName: subtopicToUse, // title
-              subtopic: subtopicToUse,
-              description: descriptionToUse,
-              questions,
-              video_url: videoUrl
-            })
-          });
+  // Extract subjectName from URL (example: ?subjectName=Physics)
+  const urlParams = new URLSearchParams(window.location.search);
+  const subjectName = urlParams.get("subjectName") || "General";
 
-          const result = await res.json();
+  try {
+    const payload = {
+      subtopicId,          // from URL param
+      subtopicName: subtopicToUse,
+      description: descriptionToUse,
+      questions,
+      video_url: videoUrl,
+      subjectName
+    };
 
-          // 2️⃣ ALSO save video URL to Spring Boot backend (main DB)
-          // await fetch("https://studentpadmasini.onrender.com/api/content/addVideo", {
-          //   method: "POST",
-          //   headers: { "Content-Type": "application/json" },
-          //   body: JSON.stringify({
-          //     subtopicId: subtopicToUse, // ⚠️ Must be the MongoDB _id of the subtopic
-          //     videoUrl: videoUrl
-          //   })
-          // });
-          await fetch("https://studentpadmasini.onrender.com/api/content/addVideo", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              subtopicId: subtopicId,   // ✅ real Mongo _id from React
-              videoUrl: videoUrl
-            })
-          });
+    const res = await fetch("https://ai-generative-rhk1.onrender.com/save-full-data", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
 
+    const result = await res.json();
 
-          // 3️⃣ Redirect back to Admin page like before
-          if (result && result.message) {
-            const backUrl = addOrUpdateParam(returnTo, "saved", "true");
-            window.location.href = backUrl;
-          } else {
-            alert("Save failed, please try again!");
-          }
-        } catch (err) {
-          console.error("Error in saveToDatabase:", err);
-          alert("❌ Something went wrong while saving.");
-        }
-      }
+    if (result && result.message) {
+      const returnTo = urlParams.get("returnTo") || "https://genuine-sopapillas-c1e756.netlify.app/";
+      const backUrl = addOrUpdateParam(returnTo, "saved", "true");
+      window.location.href = backUrl;
+    } else {
+      alert("Save failed, please try again!");
+    }
 
+  } catch (err) {
+    console.error("Error in saveToDatabase:", err);
+    alert("❌ Something went wrong while saving.");
+  }
+}
 
 
       // === Voice Quiz (robust) ===
