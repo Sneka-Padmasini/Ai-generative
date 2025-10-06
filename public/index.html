@@ -273,16 +273,62 @@
         });
       }
 
-      // --- Generate Video ---
+      // // --- Generate Video ---
+      // async function generateVideo() {
+      //   const descriptionToUse =
+      //     document.getElementById("customDescription").value.trim() ||
+      //     document.getElementById("originalDescription").value.trim();
+
+      //   const loading = document.getElementById("loadingMessage");
+      //   const video = document.getElementById("video");
+
+      //   // Show loading spinner + message, hide video while waiting
+      //   loading.style.display = "block";
+      //   video.style.display = "none";
+
+      //   try {
+      //     const res = await fetch("https://ai-generative-rhk1.onrender.com/generate-and-upload", {
+      //       method: "POST",
+      //       headers: { "Content-Type": "application/json" },
+      //       // body: JSON.stringify({ subtopic, description: descriptionToUse })
+      //       body: JSON.stringify({
+      //         subtopicId,       // Mongo _id
+      //         subtopicName,     // title
+      //         description: descriptionToUse
+      //       })
+      //     });
+
+      //     const data = await res.json();
+
+      //     // Hide loading, show video
+      //     loading.style.display = "none";
+      //     video.style.display = "block";
+
+      //     video.src = data.firebase_video_url;
+      //     video.onended = () => startVoiceQuiz();
+      //   } catch (err) {
+      //     console.error("❌ Error generating video:", err);
+      //     loading.innerHTML = `<p style="color:red;">❌ Failed to generate video. Try again.</p>`;
+      //   }
+      // }
       async function generateVideo() {
         const descriptionToUse =
           document.getElementById("customDescription").value.trim() ||
           document.getElementById("originalDescription").value.trim();
 
+        if (!descriptionToUse) {
+          alert("❌ Please provide a lesson description.");
+          return;
+        }
+
+        if (!subtopicId || !subtopicName) {
+          alert("❌ Missing subtopic info. Please return from the admin page.");
+          return;
+        }
+
         const loading = document.getElementById("loadingMessage");
         const video = document.getElementById("video");
 
-        // Show loading spinner + message, hide video while waiting
         loading.style.display = "block";
         video.style.display = "none";
 
@@ -290,21 +336,22 @@
           const res = await fetch("https://ai-generative-rhk1.onrender.com/generate-and-upload", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            // body: JSON.stringify({ subtopic, description: descriptionToUse })
             body: JSON.stringify({
-              subtopicId,       // Mongo _id
-              subtopicName,     // title
+              subtopicId,
+              subtopicName,
               description: descriptionToUse
             })
           });
 
-          const data = await res.json();
+          if (!res.ok) throw new Error(`Server returned ${res.status}`);
 
-          // Hide loading, show video
+          const data = await res.json();
+          if (!data.firebase_video_url) throw new Error("No video URL returned");
+
           loading.style.display = "none";
           video.style.display = "block";
-
           video.src = data.firebase_video_url;
+
           video.onended = () => startVoiceQuiz();
         } catch (err) {
           console.error("❌ Error generating video:", err);
