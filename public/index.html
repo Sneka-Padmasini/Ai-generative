@@ -29,7 +29,6 @@ video { display:block; width:100%; border-radius:12px; margin-top:15px; }
 <header><h1>📗 AI Teaching Assistant</h1></header>
 <main>
 
-<!-- Lesson Info -->
 <section>
 <h2>Lesson Details</h2>
 <label>Subject</label>
@@ -46,7 +45,6 @@ video { display:block; width:100%; border-radius:12px; margin-top:15px; }
 <textarea id="customDescription" placeholder="Type your lesson description here..."></textarea>
 </section>
 
-<!-- Quiz Builder -->
 <section>
 <h2>📋 Quiz Builder</h2>
 <div class="two-column">
@@ -57,7 +55,6 @@ video { display:block; width:100%; border-radius:12px; margin-top:15px; }
 <div id="questionsList"><h3>✅ Added Questions:</h3><div id="addedQuestions"></div></div>
 </section>
 
-<!-- Video Section -->
 <section>
 <h2>🎥 Lesson Video</h2>
 <button type="button" onclick="generateVideo()">Generate Video</button>
@@ -68,12 +65,10 @@ video { display:block; width:100%; border-radius:12px; margin-top:15px; }
 <video id="video" controls style="display:none;"></video>
 </section>
 
-<!-- Save Lesson -->
 <section>
 <button type="button" onclick="saveToDatabase()">💾 Save Lesson</button>
 </section>
 
-<!-- Voice Quiz -->
 <section id="quizDisplay">
 <h2>📝 Voice Quiz</h2>
 <p><strong>Question:</strong> <span id="currentQuestionText"></span></p>
@@ -83,6 +78,9 @@ video { display:block; width:100%; border-radius:12px; margin-top:15px; }
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
+  // 🔧 Backend Base URL (your Render server)
+  const API_BASE = "https://ai-generative-rhk1.onrender.com";
+
   const urlParams = new URLSearchParams(window.location.search);
   const subtopicName = urlParams.get("subtopic") || "";
   const description = urlParams.get("description") || "";
@@ -122,7 +120,7 @@ document.addEventListener("DOMContentLoaded", () => {
     loading.style.display="block"; video.style.display="none";
 
     try {
-      const res = await fetch("/generate-and-upload", {
+      const res = await fetch(`${API_BASE}/generate-and-upload`, {
         method:"POST",
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({subtopicId, subtopicName, description:desc})
@@ -151,7 +149,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if(!videoUrl) return alert("Please generate video first!");
 
     try {
-      const res=await fetch("/save-full-data",{
+      const res=await fetch(`${API_BASE}/save-full-data`,{
         method:"POST",
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({
