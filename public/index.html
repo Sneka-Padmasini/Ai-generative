@@ -1,3 +1,4 @@
+<!-- index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -5,6 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>AI Teaching Assistant</title>
 <style>
+/* Keep your original styles as-is */
 body { font-family: 'Segoe UI', sans-serif; background:#f9fafb; margin:0; padding:0; color:#333; }
 header { background:#2ecc71; color:white; padding:20px; text-align:center; }
 header h1 { margin:0; font-size:1.8rem; }
@@ -28,8 +30,6 @@ video { display:block; width:100%; border-radius:12px; margin-top:15px; }
 <body>
 <header><h1>📗 AI Teaching Assistant</h1></header>
 <main>
-
-<!-- Lesson Info -->
 <section>
 <h2>Lesson Details</h2>
 <label>Subject</label>
@@ -46,7 +46,6 @@ video { display:block; width:100%; border-radius:12px; margin-top:15px; }
 <textarea id="customDescription" placeholder="Type your lesson description here..."></textarea>
 </section>
 
-<!-- Quiz Builder -->
 <section>
 <h2>📋 Quiz Builder</h2>
 <div class="two-column">
@@ -57,7 +56,6 @@ video { display:block; width:100%; border-radius:12px; margin-top:15px; }
 <div id="questionsList"><h3>✅ Added Questions:</h3><div id="addedQuestions"></div></div>
 </section>
 
-<!-- Video Section -->
 <section>
 <h2>🎥 Lesson Video</h2>
 <button type="button" onclick="generateVideo()">Generate Video</button>
@@ -68,12 +66,10 @@ video { display:block; width:100%; border-radius:12px; margin-top:15px; }
 <video id="video" controls style="display:none;"></video>
 </section>
 
-<!-- Save Lesson -->
 <section>
 <button type="button" onclick="saveToDatabase()">💾 Save Lesson</button>
 </section>
 
-<!-- Voice Quiz -->
 <section id="quizDisplay">
 <h2>📝 Voice Quiz</h2>
 <p><strong>Question:</strong> <span id="currentQuestionText"></span></p>
@@ -121,18 +117,20 @@ document.addEventListener("DOMContentLoaded", () => {
     if(!desc) return alert("No description provided!");
     loading.style.display="block"; video.style.display="none";
     try {
-      const res = await fetch("https://ai-generative-rhk1.onrender.com/generate-and-upload", {
+      const res = await fetch("/generate-and-upload", {
         method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({subtopicId, subtopicName, description:desc})
       });
+      if(!res.ok) throw new Error(`Server returned ${res.status}`);
       const data = await res.json();
       if(data.firebase_video_url){
         video.src=data.firebase_video_url;
         video.style.display="block";
         loading.style.display="none";
-        video.onended = startVoiceQuiz; // auto start quiz after video
+        video.onended = startVoiceQuiz;
       } else {
         loading.innerHTML="❌ Failed to generate video. Check console.";
+        console.error(data);
       }
     } catch(err){ console.error(err); loading.innerHTML="❌ Error generating video."; }
   }
@@ -144,7 +142,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const videoUrl=video.src;
     if(!videoUrl) return alert("Please generate video first!");
     try {
-      const res=await fetch("https://ai-generative-rhk1.onrender.com/save-full-data",{
+      const res=await fetch("/save-full-data",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({
