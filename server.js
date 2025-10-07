@@ -50,7 +50,12 @@ app.get("/", (req, res) => {
 app.post("/generate-and-upload", async (req, res) => {
   const { subtopicId, subtopicName, description } = req.body;
 
+  if (!description || !subtopicName) {
+    return res.status(400).json({ error: "Missing subtopicName or description" });
+  }
+
   try {
+    // 1️⃣ Call D-ID API
     const didResponse = await axios.post(
       "https://api.d-id.com/talks",
       {
@@ -65,14 +70,18 @@ app.post("/generate-and-upload", async (req, res) => {
     let status = "notDone";
     let retries = 0;
 
-    while (status !== "done" && retries < 30) { // max 60s
+    // 2️⃣ Polling until video is ready
+    while (status !== "done" && retries < 60) { // wait up to 2 minutes
       const poll = await axios.get(`https://api.d-id.com/talks/${talkId}`, {
         headers: { Authorization: DID_API_KEY },
       });
 
       status = poll.data.status;
+      console.log("⏱ Polling D-ID:", status);
+
       if (status === "done") {
-        videoUrl = poll.data.result_url;
+        videoUrl = poll.data.result_url || poll.data.result_url_signed;
+        break;
       } else {
         await new Promise(r => setTimeout(r, 2000));
         retries++;
@@ -83,19 +92,27 @@ app.post("/generate-and-upload", async (req, res) => {
       return res.status(500).json({ error: "Video generation timed out" });
     }
 
+    console.log("✅ Video generated:", videoUrl);
+
+    // Return video URL to frontend
     res.json({ firebase_video_url: videoUrl });
   } catch (err) {
     console.error("❌ D-ID Error:", err.response?.data || err.message);
-    res.status(500).json({ error: "Video generation failed" });
+    res.status(500).json({ error: "Video generation failed", details: err.response?.data || err.message });
   }
 });
 
-// Save lesson to MongoDB
+// Save lesson to MongoDB dynamically based on selected subject
 app.post("/save-full-data", async (req, res) => {
   if (!db) return res.status(500).json({ error: "Database not connected yet" });
 
   const { subtopicId, subtopicName, description, questions, video_url, subjectName } = req.body;
-  const collectionName = subjectName?.trim() || "General";
+
+  if (!subtopicName || !description || !subjectName || !video_url) {
+    return res.status(400).json({ error: "Missing required fields" });
+  }
+
+  const collectionName = subjectName.trim(); // dynamically select collection
   const collection = db.collection(collectionName);
 
   try {
@@ -103,8 +120,7 @@ app.post("/save-full-data", async (req, res) => {
     if (subtopicId && ObjectId.isValid(subtopicId)) {
       filter = { _id: new ObjectId(subtopicId) };
     } else {
-      // generate new ObjectId for new document
-      filter = { _id: new ObjectId() };
+      filter = { _id: new ObjectId() }; // create new doc
     }
 
     const update = {
@@ -112,20 +128,20 @@ app.post("/save-full-data", async (req, res) => {
         subtopicName,
         description,
         videoUrl: video_url,
-        questions,
+        questions: questions || [],
         date_added: new Date(),
       },
     };
 
     await collection.updateOne(filter, update, { upsert: true });
 
+    console.log(`✅ Saved lesson in collection: ${collectionName}`);
     res.json({ message: "✅ Data saved successfully." });
   } catch (err) {
     console.error("❌ MongoDB Save Error:", err.message);
     res.status(500).json({ error: "Failed to save to database" });
   }
 });
-
 
 // Start server
 app.listen(PORT, () => {
