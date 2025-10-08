@@ -87,36 +87,34 @@ app.post("/generate-and-upload", async (req, res) => {
 
 // ✅ Route: Save to professional DB
 // ✅ Route: Save to MongoDB (dynamic collection based on subject)
+// ✅ Route: Save to MongoDB (Phase 1: Fixed collection = Physics)
 app.post("/save-full-data", async (req, res) => {
-  const { subtopic, description, questions, video_url, subject } = req.body;
+  const { subtopic, description, questions, video_url } = req.body;
 
-  if (!subject) {
-    return res.status(400).json({ error: "Subject is required" });
+  if (!subtopic || !description || !video_url) {
+    return res.status(400).json({ error: "Missing required fields" });
   }
 
   try {
-    // Connect to the professional DB
-    const db = client.db("professional");
-
-    // Ensure the collection exists; MongoDB will auto-create if not
-    const collection = db.collection(subject);
+    // Use fixed collection "Physics" for testing
+    const collection = client.db("professional").collection("Physics");
 
     const doc = {
       subtopic,
       description,
       video_url,
-      questions,
+      questions: Array.isArray(questions) ? questions : [],
       date_added: new Date(),
     };
 
     await collection.insertOne(doc);
-
-    res.json({ message: `✅ Data saved successfully in ${subject}` });
+    res.json({ message: "✅ Data saved successfully in Physics collection." });
   } catch (err) {
     console.error("❌ MongoDB Save Error:", err.message);
     res.status(500).json({ error: "Failed to save to database" });
   }
 });
+
 
 // ✅ Start Server
 app.listen(PORT, () => {

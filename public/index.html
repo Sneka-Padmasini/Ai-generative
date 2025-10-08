@@ -362,7 +362,7 @@
       // }
 
      // --- Save Lesson ---
-// --- Save Lesson (fully automatic subject detection) ---
+/// --- Save Lesson (Phase 1: Fixed Physics collection) ---
 async function saveToDatabase() {
   const subtopicToUse = document.getElementById("subtopic").value.trim();
   const descriptionToUse =
@@ -371,27 +371,20 @@ async function saveToDatabase() {
   const videoUrl = document.getElementById("video").src;
 
   if (!videoUrl) return alert("Please generate video first.");
-
-  // --- Automatically detect subject from subtopic ---
-  // List of collections in professional DB
-  const collections = ["Botany", "Chemistry", "General", "Maths", "Physics", "Zoology"];
-
-  // Find a collection that matches part of the subtopic
-  let subject = collections.find(c => subtopicToUse.toLowerCase().includes(c.toLowerCase()));
-  if (!subject) subject = "General"; // fallback
+  if (!subtopicToUse || !descriptionToUse)
+    return alert("Subtopic or description cannot be empty.");
 
   try {
-    // 1️⃣ Save to AI Generator App (correct collection)
+    // 1️⃣ Save to AI Generator App (Phase 1: Physics collection)
     const res = await fetch("https://ai-generative-rhk1.onrender.com/save-full-data", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         subtopic: subtopicToUse,
         description: descriptionToUse,
-        questions,
+        questions, // make sure questions is defined as an array
         video_url: videoUrl,
-        subject // ✅ required by backend
-      })
+      }),
     });
 
     const result = await res.json();
@@ -401,25 +394,25 @@ async function saveToDatabase() {
       return alert(`Failed to save lesson: ${result.error || "Unknown error"}`);
     }
 
-    // 2️⃣ ALSO save video URL to Spring Boot backend (optional)
+    // 2️⃣ Optional: save video URL to Spring Boot backend
     await fetch("https://studentpadmasini.onrender.com/api/content/addVideo", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         subtopicId: subtopicToUse,
-        videoUrl: videoUrl
-      })
+        videoUrl: videoUrl,
+      }),
     });
 
     // 3️⃣ Redirect back
     const backUrl = addOrUpdateParam(returnTo, "saved", "true");
     window.location.href = backUrl;
-
   } catch (err) {
     console.error("Error in saveToDatabase:", err);
     alert("❌ Something went wrong while saving.");
   }
 }
+
 
 
 
