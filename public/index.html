@@ -362,6 +362,7 @@
       // }
 
      // --- Save Lesson ---
+// --- Save Lesson (fully automatic subject detection) ---
 async function saveToDatabase() {
   const subtopicToUse = document.getElementById("subtopic").value.trim();
   const descriptionToUse =
@@ -371,19 +372,16 @@ async function saveToDatabase() {
 
   if (!videoUrl) return alert("Please generate video first.");
 
-  // --- Determine the subject/collection dynamically ---
-  // You can adjust this mapping if needed
-  let subject = "General"; // default
-  const lowerSubtopic = subtopicToUse.toLowerCase();
-  if (["physics"].includes(lowerSubtopic)) subject = "Physics";
-  else if (["chemistry"].includes(lowerSubtopic)) subject = "Chemistry";
-  else if (["zoology"].includes(lowerSubtopic)) subject = "Zoology";
-  else if (["botany"].includes(lowerSubtopic)) subject = "Botany";
-  else if (["maths", "math"].includes(lowerSubtopic)) subject = "Maths";
-  else subject = "General";
+  // --- Automatically detect subject from subtopic ---
+  // List of collections in professional DB
+  const collections = ["Botany", "Chemistry", "General", "Maths", "Physics", "Zoology"];
+
+  // Find a collection that matches part of the subtopic
+  let subject = collections.find(c => subtopicToUse.toLowerCase().includes(c.toLowerCase()));
+  if (!subject) subject = "General"; // fallback
 
   try {
-    // 1️⃣ Save to AI Generator App (old behavior)
+    // 1️⃣ Save to AI Generator App (correct collection)
     const res = await fetch("https://ai-generative-rhk1.onrender.com/save-full-data", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -392,34 +390,37 @@ async function saveToDatabase() {
         description: descriptionToUse,
         questions,
         video_url: videoUrl,
-        subject // ✅ Add subject here for correct collection
+        subject // ✅ required by backend
       })
     });
 
     const result = await res.json();
 
-    // 2️⃣ ALSO save video URL to Spring Boot backend (main DB)
+    if (res.status !== 200) {
+      console.error("❌ Save failed:", result);
+      return alert(`Failed to save lesson: ${result.error || "Unknown error"}`);
+    }
+
+    // 2️⃣ ALSO save video URL to Spring Boot backend (optional)
     await fetch("https://studentpadmasini.onrender.com/api/content/addVideo", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        subtopicId: subtopicToUse, // ⚠️ Ensure this matches your Spring Boot DB
+        subtopicId: subtopicToUse,
         videoUrl: videoUrl
       })
     });
 
-    // 3️⃣ Redirect back to Admin page
-    if (result && result.message) {
-      const backUrl = addOrUpdateParam(returnTo, "saved", "true");
-      window.location.href = backUrl;
-    } else {
-      alert("Save failed, please try again!");
-    }
+    // 3️⃣ Redirect back
+    const backUrl = addOrUpdateParam(returnTo, "saved", "true");
+    window.location.href = backUrl;
+
   } catch (err) {
     console.error("Error in saveToDatabase:", err);
     alert("❌ Something went wrong while saving.");
   }
 }
+
 
 
 

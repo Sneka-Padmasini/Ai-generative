@@ -86,15 +86,21 @@ app.post("/generate-and-upload", async (req, res) => {
 });
 
 // ✅ Route: Save to professional DB
+// ✅ Route: Save to MongoDB (dynamic collection based on subject)
 app.post("/save-full-data", async (req, res) => {
   const { subtopic, description, questions, video_url, subject } = req.body;
 
-  if (!subject) return res.status(400).json({ error: "Subject is required" });
-
-  const collection = collections[subject.toLowerCase()];
-  if (!collection) return res.status(400).json({ error: "Invalid subject" });
+  if (!subject) {
+    return res.status(400).json({ error: "Subject is required" });
+  }
 
   try {
+    // Connect to the professional DB
+    const db = client.db("professional");
+
+    // Ensure the collection exists; MongoDB will auto-create if not
+    const collection = db.collection(subject);
+
     const doc = {
       subtopic,
       description,
@@ -102,8 +108,10 @@ app.post("/save-full-data", async (req, res) => {
       questions,
       date_added: new Date(),
     };
+
     await collection.insertOne(doc);
-    res.json({ message: "✅ Data saved successfully." });
+
+    res.json({ message: `✅ Data saved successfully in ${subject}` });
   } catch (err) {
     console.error("❌ MongoDB Save Error:", err.message);
     res.status(500).json({ error: "Failed to save to database" });
