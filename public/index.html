@@ -232,6 +232,7 @@
       const returnTo = urlParams.get("returnTo") || "https://genuine-sopapillas-c1e756.netlify.app/";
       const subtopic = urlParams.get("subtopic") || "";
       const description = urlParams.get("description") || "";
+const subject = urlParams.get("subject") || "General";
 
       console.log("✅ URL Params:", { subtopic, description }); // DEBUG
 
@@ -376,16 +377,18 @@ async function saveToDatabase() {
 
   try {
     // 1️⃣ Save to AI Generator App (Phase 1: Physics collection)
-    const res = await fetch("https://ai-generative-rhk1.onrender.com/save-full-data", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        subtopic: subtopicToUse,
-        description: descriptionToUse,
-        questions, // make sure questions is defined as an array
-        video_url: videoUrl,
-      }),
-    });
+   const res = await fetch("https://ai-generative-rhk1.onrender.com/save-full-data", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    subject,
+    subtopic: subtopicToUse,
+    description: descriptionToUse,
+    questions,
+    video_url: videoUrl,
+  }),
+});
+
 
     const result = await res.json();
 
