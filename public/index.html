@@ -362,52 +362,48 @@
       // }
 
       // --- Save Lesson ---
-      async function saveToDatabase() {
-        const subtopicToUse = document.getElementById("subtopic").value.trim();
-        const descriptionToUse =
-          document.getElementById("customDescription").value.trim() ||
-          document.getElementById("originalDescription").value.trim();
-        const videoUrl = document.getElementById("video").src;
+      // --- Save Lesson (Dynamic subject from URL) ---
+async function saveToDatabase() {
+  const subtopicToUse = document.getElementById("subtopic").value.trim();
+  const descriptionToUse =
+    document.getElementById("customDescription").value.trim() ||
+    document.getElementById("originalDescription").value.trim();
+  const videoUrl = document.getElementById("video").src;
 
-        if (!videoUrl) return alert("Please generate video first.");
+  if (!videoUrl) return alert("Please generate video first.");
 
-        try {
-          // 1️⃣ Save to AI Generator App (keep old behavior)
-          const res = await fetch("https://ai-generative-rhk1.onrender.com/save-full-data", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              subtopic: subtopicToUse,
-              description: descriptionToUse,
-              questions,
-              video_url: videoUrl
-            })
-          });
+  // ✅ Read subject from URL (example: ?subject=Physics)
+  const urlParams = new URLSearchParams(window.location.search);
+  const subject = urlParams.get("subject");
+  if (!subject) return alert("Missing subject in URL — please open from proper subject page.");
 
-          const result = await res.json();
+  try {
+    const res = await fetch("https://ai-generative-rhk1.onrender.com/save-ai-video", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        subject,
+        subtopic: subtopicToUse,
+        description: descriptionToUse,
+        questions,
+        video_url: videoUrl
+      })
+    });
 
-          // 2️⃣ ALSO save video URL to Spring Boot backend (main DB)
-          await fetch("https://studentpadmasini.onrender.com/api/content/addVideo", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              subtopicId: subtopicToUse, // ⚠️ Must be the MongoDB _id of the subtopic
-              videoUrl: videoUrl
-            })
-          });
+    const result = await res.json();
 
-          // 3️⃣ Redirect back to Admin page like before
-          if (result && result.message) {
-            const backUrl = addOrUpdateParam(returnTo, "saved", "true");
-            window.location.href = backUrl;
-          } else {
-            alert("Save failed, please try again!");
-          }
-        } catch (err) {
-          console.error("Error in saveToDatabase:", err);
-          alert("❌ Something went wrong while saving.");
-        }
-      }
+    if (result.success) {
+      alert(`✅ Saved to ${subject} collection successfully!`);
+      const backUrl = addOrUpdateParam(returnTo, "saved", "true");
+      window.location.href = backUrl;
+    } else {
+      alert("Save failed, please try again!");
+    }
+  } catch (err) {
+    console.error("Error in saveToDatabase:", err);
+    alert("❌ Something went wrong while saving.");
+  }
+}
 
 
 
