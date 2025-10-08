@@ -1,7 +1,4 @@
-// server.js — Dynamic save for multi-subject structure
-
 const express = require("express");
-const axios = require("axios");
 const cors = require("cors");
 const { MongoClient } = require("mongodb");
 require("dotenv").config();
@@ -11,46 +8,33 @@ app.use(cors());
 app.use(express.json());
 
 const client = new MongoClient(process.env.MONGO_URI);
-
 let db;
 client.connect().then(() => {
-  db = client.db("professional"); // ✅ Your main DB
+  db = client.db("professional");
   console.log("✅ Connected to MongoDB → professional");
 });
 
-// ==================================================
-// SAVE AI VIDEO DYNAMICALLY BY SUBJECT
-// ==================================================
-app.post("/save-ai-video", async (req, res) => {
-  try {
-    const { subject, subtopic, description, video_url, questions, standard } = req.body;
-
-    if (!subject) {
-      return res.status(400).json({ error: "Subject is required" });
-    }
-
-    // ✅ Use subject dynamically as collection name
+app.post("/save-ai-video", async (req,res)=>{
+  try{
+    const {subject, subtopic, description, video_url, questions} = req.body;
+    if(!subject) return res.status(400).json({error:"Subject required"});
     const collection = db.collection(subject);
-
     const doc = {
-      unitName: subtopic,             // like "Dynamics"
+      unitName: subtopic,
       description: description || "",
-      standard: standard || "11",     // default 11, can be dynamic
       test: questions || [],
       units: [],
-      video_url,                      // link to generated video
+      video_url,
       date_added: new Date(),
-      _class: "com.padmasiniAdmin.padmasiniAdmin_1.model.UnitRequest",
+      _class:"com.padmasiniAdmin.padmasiniAdmin_1.model.UnitRequest"
     };
-
     const result = await collection.insertOne(doc);
     console.log(`✅ Saved in ${subject} → ${subtopic}`);
-
-    res.json({ success: true, insertedId: result.insertedId });
-  } catch (err) {
-    console.error("❌ Error saving AI video:", err);
-    res.status(500).json({ error: "Failed to save AI video" });
+    res.json({success:true, insertedId: result.insertedId});
+  }catch(err){
+    console.error(err);
+    res.status(500).json({error:"Failed to save"});
   }
 });
 
-app.listen(3000, () => console.log("🚀 Server running on port 3000"));
+app.listen(process.env.PORT || 3000, ()=> console.log("🚀 Server running"));
