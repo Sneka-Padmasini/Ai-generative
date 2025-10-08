@@ -21,7 +21,7 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-// ✅ MongoDB Connection (from .env)
+// ✅ MongoDB Connection (professional DB)
 const MONGO_URI = process.env.MONGO_URI;
 if (!MONGO_URI) {
   console.error("❌ Missing MONGO_URI in .env file");
@@ -29,12 +29,17 @@ if (!MONGO_URI) {
 }
 
 const client = new MongoClient(MONGO_URI);
-let collection;
+let db;
+let collections = {};
 
 client.connect().then(() => {
-  const db = client.db("ai_teacher");
-  collection = db.collection("lessons");
-  console.log("✅ Connected to MongoDB");
+  db = client.db("professional"); // ✅ professional DB
+  ["Botany", "Chemistry", "General", "Maths", "Physics", "Zoology"].forEach(
+    (name) => {
+      collections[name.toLowerCase()] = db.collection(name);
+    }
+  );
+  console.log("✅ Connected to MongoDB Professional DB");
 });
 
 // ✅ D-ID API Key (from .env, already Base64 encoded)
@@ -42,30 +47,20 @@ const DID_API_KEY = `Basic ${Buffer.from(process.env.DID_API_KEY).toString("base
 
 // ✅ Route: Generate Video from D-ID
 app.post("/generate-and-upload", async (req, res) => {
-  const { subtopic, description } = req.body; // ⬅️ Only subtopic + description
+  const { subtopic, description } = req.body;
 
   try {
     const didResponse = await axios.post(
       "https://api.d-id.com/talks",
       {
-        script: {
-          type: "text",
-          input: description,
-          subtitles: "false",
-        },
-        presenter_id: "amy-jcwq6j4g", // Replace with your own presenter_id if needed
+        script: { type: "text", input: description, subtitles: "false" },
+        presenter_id: "amy-jcwq6j4g",
       },
-      {
-        headers: {
-          Authorization: DID_API_KEY,
-          "Content-Type": "application/json",
-        },
-      }
+      { headers: { Authorization: DID_API_KEY, "Content-Type": "application/json" } }
     );
 
     const talkId = didResponse.data.id;
 
-    // Poll until video is ready
     let videoUrl = "";
     let status = "notDone";
 
@@ -75,11 +70,8 @@ app.post("/generate-and-upload", async (req, res) => {
       });
 
       status = poll.data.status;
-      if (status === "done") {
-        videoUrl = poll.data.result_url;
-      } else {
-        await new Promise((r) => setTimeout(r, 2000));
-      }
+      if (status === "done") videoUrl = poll.data.result_url;
+      else await new Promise((r) => setTimeout(r, 2000));
     }
 
     res.json({ firebase_video_url: videoUrl });
@@ -93,9 +85,14 @@ app.post("/generate-and-upload", async (req, res) => {
   }
 });
 
-// ✅ Route: Save to MongoDB
+// ✅ Route: Save to professional DB
 app.post("/save-full-data", async (req, res) => {
-  const { subtopic, description, questions, video_url } = req.body;
+  const { subtopic, description, questions, video_url, subject } = req.body;
+
+  if (!subject) return res.status(400).json({ error: "Subject is required" });
+
+  const collection = collections[subject.toLowerCase()];
+  if (!collection) return res.status(400).json({ error: "Invalid subject" });
 
   try {
     const doc = {
@@ -105,7 +102,6 @@ app.post("/save-full-data", async (req, res) => {
       questions,
       date_added: new Date(),
     };
-
     await collection.insertOne(doc);
     res.json({ message: "✅ Data saved successfully." });
   } catch (err) {
