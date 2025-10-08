@@ -121,6 +121,7 @@ app.post("/save-full-data", async (req, res) => {
 
 
 // ✅ Start Server
-app.listen(PORT, () => {
-  console.log(`✅ Server running at http://localhost:${PORT}`);
+const host = "0.0.0.0"; // Bind to all network interfaces
+app.listen(PORT, host, () => {
+  console.log(`✅ Server running at http://0.0.0.0:${PORT}`);
 });
