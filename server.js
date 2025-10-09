@@ -87,39 +87,43 @@ app.post("/generate-and-upload", async (req, res) => {
 
 // ✅ Route: Save to professional DB
 // ✅ Route: Save to MongoDB (Dynamic collection by subject)
-// POST /save-full-lesson
-// POST /save-full-lesson
-// ✅ Save AI video and questions in professional DB
-app.post("/save-full-lesson", async (req, res) => {
-  const { courseName, subjectName, unitId, subtopic, description, video_url, questions } = req.body;
+ app.post("/save-full-lesson", async (req, res) => {
+  const { courseName, subjectName, subtopic, description, video_url, questions } = req.body;
 
-  if (!subtopic || !description || !video_url) {
+  if (!courseName || !subjectName || !subtopic || !description || !video_url) {
     return res.status(400).json({ error: "Missing required fields" });
   }
 
   try {
-    const collection = db.collection(subjectName); // e.g., Physics
+    // Select DB dynamically (like 'professional')
+    const dbClient = client.db(courseName);
 
-    // Create the document in the same format you verified
+    // Select collection dynamically (like 'Physics')
+    const collection = dbClient.collection(subjectName);
+
+    // Build lesson document
     const lessonDoc = {
       subtopic,
       description,
       video_url,
-      questions: (questions || []).map(q => ({
-        ...q,
-        date_added: new Date()
-      }))
+      questions: (questions || []).map((q) => ({
+        question: q.question,
+        answer: q.answer,
+        date_added: new Date(),
+      })),
+      date_added: new Date(),
     };
 
+    // Save it
     const result = await collection.insertOne(lessonDoc);
 
-    res.json({ message: "✅ Lesson saved successfully!", lessonId: result.insertedId });
+    console.log("✅ Saved Lesson:", result.insertedId);
+    res.json({ message: "✅ Lesson saved successfully!", id: result.insertedId });
   } catch (err) {
     console.error("❌ Error saving lesson:", err);
-    res.status(500).json({ error: "Server error" });
+    res.status(500).json({ error: "Server error while saving lesson" });
   }
 });
-
 
 
 
