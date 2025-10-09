@@ -364,28 +364,43 @@ const subject = urlParams.get("subject") || "General";
 
      // --- Save Lesson ---
 async function saveAiVideo() {
-  const courseName = new URLSearchParams(window.location.search).get("courseName");
-  const subjectName = new URLSearchParams(window.location.search).get("subjectName");
-  const unitId = new URLSearchParams(window.location.search).get("unitId");
+  const urlParams = new URLSearchParams(window.location.search);
+  const courseName = urlParams.get("courseName");
+  const subjectName = urlParams.get("subjectName");
+  const unitId = urlParams.get("unitId");
   const videoUrl = document.getElementById("video").src;
 
-  if (!videoUrl) return alert("Please generate the AI video first.");
+  if (!videoUrl) return alert("❌ Please generate the AI video first!");
+  if (!unitId) return alert("❌ Subunit _id missing!");
+
+  // Collect questions & answers from your UI
+  const questionsElems = document.querySelectorAll("#addedQuestions .question-item");
+  const qaArray = Array.from(questionsElems).map(el => {
+    const [q, a] = el.innerText.split(/\n/).map(str => str.replace(/^Q\d+:\s*|A:\s*/g, "").trim());
+    return { question: q, answer: a };
+  });
 
   try {
     const res = await fetch("https://ai-generative-rhk1.onrender.com/save-ai-video", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ courseName, subjectName, unitId, video_url: videoUrl })
+      body: JSON.stringify({ courseName, subjectName, unitId, video_url: videoUrl, questions: qaArray })
     });
 
     const result = await res.json();
-    if (res.status === 200) alert("✅ AI video URL saved under aiVideoUrl field!");
-    else alert(`❌ Failed: ${result.error}`);
+    if (res.status === 200) {
+      alert("✅ AI video saved successfully under subunit aiVideos array!");
+      const returnTo = urlParams.get("returnTo");
+      if (returnTo) window.location.href = returnTo + "?saved=true";
+    } else {
+      alert(`❌ Failed: ${result.error}`);
+    }
   } catch (err) {
     console.error("❌ Error saving AI video:", err);
     alert("❌ Something went wrong while saving AI video.");
   }
 }
+
 
 
 

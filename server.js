@@ -88,7 +88,7 @@ app.post("/generate-and-upload", async (req, res) => {
 // ✅ Route: Save to professional DB
 // ✅ Route: Save to MongoDB (Dynamic collection by subject)
 app.post("/save-ai-video", async (req, res) => {
-  const { courseName, subjectName, unitId, video_url } = req.body;
+  const { courseName, subjectName, unitId, video_url, questions } = req.body;
 
   if (!courseName || !subjectName || !unitId || !video_url) {
     return res.status(400).json({ error: "Missing required fields" });
@@ -97,18 +97,13 @@ app.post("/save-ai-video", async (req, res) => {
   try {
     const collection = db.collection(subjectName);
 
-    // Find the root unit containing this subunit
-    const rootUnit = await collection.findOne({ "units._id": new ObjectId(unitId) });
-    if (!rootUnit) return res.status(404).json({ error: "Unit not found" });
-
-    // Update the subunit's aiVideoUrl field
     const updated = await collection.updateOne(
       { "units._id": new ObjectId(unitId) },
-      { $set: { "units.$.aiVideoUrl": video_url } }
+      { $push: { "units.$.aiVideos": { videoUrl: video_url, questions } } }
     );
 
     if (updated.modifiedCount === 1) {
-      return res.json({ message: "✅ AI video URL saved successfully!" });
+      return res.json({ message: "✅ AI video saved successfully!" });
     } else {
       return res.status(500).json({ error: "Failed to update AI video URL" });
     }
