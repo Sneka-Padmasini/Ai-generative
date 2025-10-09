@@ -87,34 +87,34 @@ app.post("/generate-and-upload", async (req, res) => {
 
 // ✅ Route: Save to professional DB
 // ✅ Route: Save to MongoDB (Dynamic collection by subject)
-app.post("/save-full-data", async (req, res) => {
-  const { subject, subtopic, description, questions, video_url } = req.body;
+app.post("/save-ai-video", async (req, res) => {
+  const { courseName, subjectName, unitId, video_url } = req.body;
 
-  if (!subject || !subtopic || !description || !video_url) {
+  if (!courseName || !subjectName || !unitId || !video_url) {
     return res.status(400).json({ error: "Missing required fields" });
   }
 
   try {
-    const subjectName = subject.trim(); // example: "Physics"
     const collection = db.collection(subjectName);
 
-    if (!collection) {
-      return res.status(400).json({ error: `Invalid subject: ${subjectName}` });
+    // Find the root unit containing this subunit
+    const rootUnit = await collection.findOne({ "units._id": new ObjectId(unitId) });
+    if (!rootUnit) return res.status(404).json({ error: "Unit not found" });
+
+    // Update the subunit's aiVideoUrl field
+    const updated = await collection.updateOne(
+      { "units._id": new ObjectId(unitId) },
+      { $set: { "units.$.aiVideoUrl": video_url } }
+    );
+
+    if (updated.modifiedCount === 1) {
+      return res.json({ message: "✅ AI video URL saved successfully!" });
+    } else {
+      return res.status(500).json({ error: "Failed to update AI video URL" });
     }
-
-    const doc = {
-      subtopic,
-      description,
-      video_url,
-      questions: Array.isArray(questions) ? questions : [],
-      date_added: new Date(),
-    };
-
-    await collection.insertOne(doc);
-    res.json({ message: `✅ Data saved successfully in ${subjectName} collection.` });
   } catch (err) {
-    console.error("❌ MongoDB Save Error:", err.message);
-    res.status(500).json({ error: "Failed to save to database" });
+    console.error("❌ Error saving AI video:", err);
+    return res.status(500).json({ error: "Server error" });
   }
 });
 

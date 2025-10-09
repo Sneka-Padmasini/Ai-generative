@@ -363,58 +363,30 @@ const subject = urlParams.get("subject") || "General";
       // }
 
      // --- Save Lesson ---
-/// --- Save Lesson (Phase 1: Fixed Physics collection) ---
-async function saveToDatabase() {
-  const subtopicToUse = document.getElementById("subtopic").value.trim();
-  const descriptionToUse =
-    document.getElementById("customDescription").value.trim() ||
-    document.getElementById("originalDescription").value.trim();
+async function saveAiVideo() {
+  const courseName = new URLSearchParams(window.location.search).get("courseName");
+  const subjectName = new URLSearchParams(window.location.search).get("subjectName");
+  const unitId = new URLSearchParams(window.location.search).get("unitId");
   const videoUrl = document.getElementById("video").src;
 
-  if (!videoUrl) return alert("Please generate video first.");
-  if (!subtopicToUse || !descriptionToUse)
-    return alert("Subtopic or description cannot be empty.");
+  if (!videoUrl) return alert("Please generate the AI video first.");
 
   try {
-    // 1️⃣ Save to AI Generator App (Phase 1: Physics collection)
-   const res = await fetch("https://ai-generative-rhk1.onrender.com/save-full-data", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    subject,
-    subtopic: subtopicToUse,
-    description: descriptionToUse,
-    questions,
-    video_url: videoUrl,
-  }),
-});
-
-
-    const result = await res.json();
-
-    if (res.status !== 200) {
-      console.error("❌ Save failed:", result);
-      return alert(`Failed to save lesson: ${result.error || "Unknown error"}`);
-    }
-
-    // 2️⃣ Optional: save video URL to Spring Boot backend
-    await fetch("https://studentpadmasini.onrender.com/api/content/addVideo", {
+    const res = await fetch("https://ai-generative-rhk1.onrender.com/save-ai-video", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        subtopicId: subtopicToUse,
-        videoUrl: videoUrl,
-      }),
+      body: JSON.stringify({ courseName, subjectName, unitId, video_url: videoUrl })
     });
 
-    // 3️⃣ Redirect back
-    const backUrl = addOrUpdateParam(returnTo, "saved", "true");
-    window.location.href = backUrl;
+    const result = await res.json();
+    if (res.status === 200) alert("✅ AI video URL saved under aiVideoUrl field!");
+    else alert(`❌ Failed: ${result.error}`);
   } catch (err) {
-    console.error("Error in saveToDatabase:", err);
-    alert("❌ Something went wrong while saving.");
+    console.error("❌ Error saving AI video:", err);
+    alert("❌ Something went wrong while saving AI video.");
   }
 }
+
 
 
 
