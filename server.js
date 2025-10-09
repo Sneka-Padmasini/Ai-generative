@@ -87,31 +87,39 @@ app.post("/generate-and-upload", async (req, res) => {
 
 // ✅ Route: Save to professional DB
 // ✅ Route: Save to MongoDB (Dynamic collection by subject)
-app.post("/save-ai-video", async (req, res) => {
-  const { courseName, subjectName, unitId, video_url, questions } = req.body;
+// POST /save-full-lesson
+// POST /save-full-lesson
+// ✅ Save AI video and questions in professional DB
+app.post("/save-full-lesson", async (req, res) => {
+  const { courseName, subjectName, unitId, subtopic, description, video_url, questions } = req.body;
 
-  if (!courseName || !subjectName || !unitId || !video_url) {
+  if (!subtopic || !description || !video_url) {
     return res.status(400).json({ error: "Missing required fields" });
   }
 
   try {
-    const collection = db.collection(subjectName);
+    const collection = db.collection(subjectName); // e.g., Physics
 
-    const updated = await collection.updateOne(
-      { "units._id": new ObjectId(unitId) },
-      { $push: { "units.$.aiVideos": { videoUrl: video_url, questions } } }
-    );
+    // Create the document in the same format you verified
+    const lessonDoc = {
+      subtopic,
+      description,
+      video_url,
+      questions: (questions || []).map(q => ({
+        ...q,
+        date_added: new Date()
+      }))
+    };
 
-    if (updated.modifiedCount === 1) {
-      return res.json({ message: "✅ AI video saved successfully!" });
-    } else {
-      return res.status(500).json({ error: "Failed to update AI video URL" });
-    }
+    const result = await collection.insertOne(lessonDoc);
+
+    res.json({ message: "✅ Lesson saved successfully!", lessonId: result.insertedId });
   } catch (err) {
-    console.error("❌ Error saving AI video:", err);
-    return res.status(500).json({ error: "Server error" });
+    console.error("❌ Error saving lesson:", err);
+    res.status(500).json({ error: "Server error" });
   }
 });
+
 
 
 

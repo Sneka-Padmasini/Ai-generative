@@ -211,7 +211,7 @@
       <div id="subtitleBox" style="margin-top:10px; font-size:1.1rem; font-weight:600; color:#2e7d32;"></div>
 
       <!-- Save Button -->
-      <button type="button" onclick="saveToDatabase()">💾 Save Lesson</button>
+      <button type="button" onclick="saveFullLesson()">💾 Save Lesson</button>
     </section>
 
 
@@ -361,46 +361,41 @@ const subject = urlParams.get("subject") || "General";
       //     alert("Save failed, please try again!");
       //   }
       // }
-
-     // --- Save Lesson ---
-async function saveAiVideo() {
+async function saveFullLesson() {
   const urlParams = new URLSearchParams(window.location.search);
   const courseName = urlParams.get("courseName");
   const subjectName = urlParams.get("subjectName");
   const unitId = urlParams.get("unitId");
-  const videoUrl = document.getElementById("video").src;
 
-  if (!videoUrl) return alert("❌ Please generate the AI video first!");
+  const subtopic = document.getElementById("subtopic").value.trim();
+  const description = document.getElementById("customDescription").value.trim() || 
+                      document.getElementById("originalDescription").value.trim();
+  const video_url = document.getElementById("video").src;
+
+  if (!video_url) return alert("Please generate the AI video first!");
   if (!unitId) return alert("❌ Subunit _id missing!");
 
-  // Collect questions & answers from your UI
-  const questionsElems = document.querySelectorAll("#addedQuestions .question-item");
-  const qaArray = Array.from(questionsElems).map(el => {
-    const [q, a] = el.innerText.split(/\n/).map(str => str.replace(/^Q\d+:\s*|A:\s*/g, "").trim());
-    return { question: q, answer: a };
+  const questions = [];
+  document.querySelectorAll("#addedQuestions .question-item").forEach(div => {
+    const [q, a] = div.innerText.split("\n").map(line => line.split(": ")[1]);
+    questions.push({ question: q, answer: a });
   });
 
   try {
-    const res = await fetch("https://ai-generative-rhk1.onrender.com/save-ai-video", {
+    const res = await fetch("https://ai-generative-rhk1.onrender.com/save-full-lesson", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ courseName, subjectName, unitId, video_url: videoUrl, questions: qaArray })
+      body: JSON.stringify({ courseName, subjectName, unitId, subtopic, description, video_url, questions })
     });
 
     const result = await res.json();
-    if (res.status === 200) {
-      alert("✅ AI video saved successfully under subunit aiVideos array!");
-      const returnTo = urlParams.get("returnTo");
-      if (returnTo) window.location.href = returnTo + "?saved=true";
-    } else {
-      alert(`❌ Failed: ${result.error}`);
-    }
+    if (res.status === 200) alert("✅ Lesson saved successfully!");
+    else alert(`❌ Failed: ${result.error}`);
   } catch (err) {
-    console.error("❌ Error saving AI video:", err);
-    alert("❌ Something went wrong while saving AI video.");
+    console.error("❌ Error saving lesson:", err);
+    alert("❌ Something went wrong while saving lesson.");
   }
 }
-
 
 
 
@@ -602,7 +597,7 @@ async function saveAiVideo() {
       // expose functions used by inline onclick handlers
       window.addQuestion = addQuestion;
       window.generateVideo = generateVideo;
-      window.saveToDatabase = saveToDatabase;
+      window.saveFullLesson = saveFullLesson;
       window.startVoiceQuiz = startVoiceQuiz;
 
     });
