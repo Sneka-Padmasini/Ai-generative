@@ -87,41 +87,29 @@ app.post("/generate-and-upload", async (req, res) => {
 
 // ✅ Route: Save to professional DB
 // ✅ Route: Save to MongoDB (Dynamic collection by subject)
- app.post("/save-full-lesson", async (req, res) => {
-  const { courseName, subjectName, subtopic, description, video_url, questions } = req.body;
+ // Save AI lesson like AdminRight
+app.post("/save-full-lesson-adminstyle", async (req, res) => {
+  const { courseName, subjectName, unit } = req.body;
 
-  if (!courseName || !subjectName || !subtopic || !description || !video_url) {
+  if (!courseName || !subjectName || !unit || !unit.parentId) {
     return res.status(400).json({ error: "Missing required fields" });
   }
 
   try {
-    // Select DB dynamically (like 'professional')
-    const dbClient = client.db(courseName);
+    const dbClient = client.db(courseName);           // same DB
+    const collection = dbClient.collection(subjectName); // same collection
 
-    // Select collection dynamically (like 'Physics')
-    const collection = dbClient.collection(subjectName);
+    // Append the AI unit under the parentId
+    const result = await collection.updateOne(
+      { _id: new require("mongodb").ObjectId(unit.parentId) },
+      { $push: { units: unit } }
+    );
 
-    // Build lesson document
-    const lessonDoc = {
-      subtopic,
-      description,
-      video_url,
-      questions: (questions || []).map((q) => ({
-        question: q.question,
-        answer: q.answer,
-        date_added: new Date(),
-      })),
-      date_added: new Date(),
-    };
-
-    // Save it
-    const result = await collection.insertOne(lessonDoc);
-
-    console.log("✅ Saved Lesson:", result.insertedId);
-    res.json({ message: "✅ Lesson saved successfully!", id: result.insertedId });
+    console.log("✅ AI Lesson saved under AdminRight parent:", unit.parentId);
+    res.json({ message: "✅ AI lesson saved successfully!", modifiedCount: result.modifiedCount });
   } catch (err) {
-    console.error("❌ Error saving lesson:", err);
-    res.status(500).json({ error: "Server error while saving lesson" });
+    console.error("❌ Error saving AI lesson:", err);
+    res.status(500).json({ error: "Server error while saving AI lesson" });
   }
 });
 
