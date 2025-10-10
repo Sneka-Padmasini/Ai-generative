@@ -228,53 +228,44 @@
  <script>
 document.addEventListener("DOMContentLoaded", () => {
   const urlParams = new URLSearchParams(window.location.search);
-  const returnTo = urlParams.get("returnTo") || "https://genuine-sopapillas-c1e756.netlify.app/";
+  const returnTo = urlParams.get("returnTo") || "/";
   const subtopic = urlParams.get("subtopic") || "";
   const description = decodeURIComponent(urlParams.get("description") || "");
-  const subject = urlParams.get("subject") || "Physics"; // change default as needed
-  const unitIdFromUrl = urlParams.get("unitId") || null; // existing unit _id
-  const parentIdFromUrl = urlParams.get("parentId") || null;
+  const subject = urlParams.get("subjectName") || "Physics";
+  const editingUnitId = urlParams.get("unitId");
 
-  // --- Fill Inputs ---
+  // Fill inputs
   document.getElementById("subtopic").value = subtopic;
   document.getElementById("originalDescription").value = description;
 
-  // --- State for saving ---
-  let editingUnitId = unitIdFromUrl;
-  let parentId = parentIdFromUrl;
-  let existingAudio = [];
-  let existingImages = [];
-  let newAudio = [];  // will fill after AI video generation
-  let newImages = []; // optional
-
-  // --- Quiz handling (unchanged) ---
+  let newAudio = [];
   const questions = [];
-  function addQuestion() {
+
+  // Add question
+  window.addQuestion = () => {
     const q = document.getElementById("questionInput").value.trim();
     const a = document.getElementById("answerInput").value.trim();
-    if (!q || !a) return alert("Please enter both question and answer.");
+    if (!q || !a) return alert("Enter both question & answer");
     questions.push({ question: q, answer: a });
     document.getElementById("questionInput").value = "";
     document.getElementById("answerInput").value = "";
     updateQuestionDisplay();
-  }
-  function updateQuestionDisplay() {
+  };
+
+  const updateQuestionDisplay = () => {
     const container = document.getElementById("addedQuestions");
     container.innerHTML = "";
-    questions.forEach((qa, index) => {
+    questions.forEach((qa, idx) => {
       const div = document.createElement("div");
       div.className = "question-item";
-      div.innerHTML = `<strong>Q${index + 1}:</strong> ${qa.question}<br/><strong>A:</strong> ${qa.answer}`;
+      div.innerHTML = `<strong>Q${idx + 1}:</strong> ${qa.question}<br/><strong>A:</strong> ${qa.answer}`;
       container.appendChild(div);
     });
-  }
+  };
 
-  // --- Generate Video ---
-  async function generateVideo() {
-    const descriptionToUse =
-      document.getElementById("customDescription").value.trim() ||
-      document.getElementById("originalDescription").value.trim();
-
+  // Generate AI Video
+  window.generateVideo = async () => {
+    const desc = document.getElementById("customDescription").value.trim() || description;
     const loading = document.getElementById("loadingMessage");
     const video = document.getElementById("video");
 
@@ -285,71 +276,48 @@ document.addEventListener("DOMContentLoaded", () => {
       const res = await fetch("https://ai-generative-rhk1.onrender.com/generate-and-upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subtopic, description: descriptionToUse })
+        body: JSON.stringify({ subtopic, description: desc }),
       });
       const data = await res.json();
+      newAudio = [data.firebase_video_url];
       loading.style.display = "none";
       video.style.display = "block";
       video.src = data.firebase_video_url;
-
-      // store AI video URL for saving
-      newAudio = [data.firebase_video_url];
     } catch (err) {
-      console.error("❌ Error generating video:", err);
-      loading.innerHTML = `<p style="color:red;">❌ Failed to generate video. Try again.</p>`;
+      console.error(err);
+      loading.innerHTML = "<p style='color:red;'>❌ Failed to generate video.</p>";
     }
-  }
+  };
 
-  // --- Save Lesson ---
-  const saveFullLesson = async () => {
-  try {
-    const payload = {
-      courseName: "professional",      // same as server DB
-      subjectName: subject,            // from URL param
-      explanation: document.getElementById("customDescription").value.trim() || description,
-      audioFileId: [...existingAudio, ...newAudio],
-      imageUrls: [...existingImages, ...newImages]
-    };
+  // Save AI Video + Quiz to professional DB
+  window.saveFullLesson = async () => {
+    try {
+      const payload = {
+        explanation: document.getElementById("customDescription").value.trim() || description,
+        audioFileId: newAudio,              // existing audios can be added if needed
+        imageUrls: [],                       // if you have images, include them here
+        aiVideoUrl: newAudio[0] || "",
+        aiTestData: questions
+      };
 
-    let response;
-
-    if (editingUnitId) {
-      // Update existing unit
-      response = await fetch(
+      const res = await fetch(
         `https://ai-generative-rhk1.onrender.com/save-full-lesson-adminstyle/${editingUnitId}`,
-        { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        }
       );
-    } else {
-      // Create new unit
-      payload.unitName = subtopic;
-      payload.parentId = parentId;
 
-      response = await fetch(
-        "https://ai-generative-rhk1.onrender.com/save-full-lesson-adminstyle",
-        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }
-      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to save");
+      alert("✅ AI Video and Quiz saved successfully!");
+      window.location.href = returnTo;
+    } catch (err) {
+      console.error(err);
+      alert("❌ Error saving lesson. Check console.");
     }
-
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "Server error");
-
-    console.log("✅ Saved successfully:", data);
-
-    // Redirect back to admin page
-    const backUrl = new URL(returnTo);
-    backUrl.searchParams.set("saved", "true");
-    window.location.href = backUrl.toString();
-  } catch (err) {
-    console.error("❌ Server error:", err);
-    alert("Failed to save lesson. Check console for details.");
-  }
-};
-
-
-  // --- expose functions for buttons ---
-  window.addQuestion = addQuestion;
-  window.generateVideo = generateVideo;
-  window.saveFullLesson = saveFullLesson;
+  };
 });
 </script>
 

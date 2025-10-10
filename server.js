@@ -87,75 +87,56 @@ app.post("/generate-and-upload", async (req, res) => {
 
 // ✅ Route: Save to professional DB
 // ✅ Route: Save to MongoDB (Dynamic collection by subject)
- // Save AI lesson like AdminRight
-const { ObjectId } = require("mongodb");
-
-// Create new AI unit under parentId
-app.post("/save-full-lesson-adminstyle", async (req, res) => {
-  const { courseName, subjectName, unit } = req.body;
-
-  if (!courseName || !subjectName || !unit || !unit.parentId) {
-    return res.status(400).json({ error: "Missing required fields" });
-  }
-
+app.post("/api/content/updateUnitAI", async (req, res) => {
   try {
-    const dbClient = client.db(courseName);
-    const collection = dbClient.collection(subjectName);
+    const { unitId, videoUrl, aiTestData } = req.body;
+    const client = await MongoClient.connect(MONGO_URI);
+    const db = client.db("PadmasiniDB");
 
-    if (!unit._id) unit._id = new ObjectId();
-
-    const result = await collection.updateOne(
-      { _id: new ObjectId(unit.parentId) },
-      { $push: { units: unit } }
-    );
-
-    if (result.modifiedCount === 0) {
-      return res.status(404).json({ error: "Parent unit not found" });
-    }
-
-    res.json({ message: "✅ AI lesson saved successfully!", unitId: unit._id.toString() });
-  } catch (err) {
-    console.error("❌ Error saving AI lesson:", err);
-    res.status(500).json({ error: "Server error while saving AI lesson" });
-  }
-});
-
-// Update existing AI unit dynamically
-app.put("/save-full-lesson-adminstyle/:id", async (req, res) => {
-  const { id } = req.params;
-  const { courseName, subjectName, explanation, audioFileId, imageUrls } = req.body;
-
-  if (!courseName || !subjectName) {
-    return res.status(400).json({ error: "Missing courseName or subjectName" });
-  }
-
-  try {
-    const dbClient = client.db(courseName);
-    const collection = dbClient.collection(subjectName);
-
-    const result = await collection.updateOne(
-      { "units._id": new ObjectId(id) },
+    const result = await db.collection("Content").updateOne(
+      { "units._id": new ObjectId(unitId) },
       {
         $set: {
-          "units.$.explanation": explanation,
-          "units.$.audioFileId": audioFileId,
-          "units.$.imageUrls": imageUrls
-        }
+          "units.$.videoUrl": videoUrl,
+          "units.$.aiTestData": aiTestData,
+        },
       }
     );
 
-    if (result.matchedCount === 0) {
-      return res.status(404).json({ error: "Unit not found" });
-    }
-
-    res.json({ message: "✅ AI lesson updated successfully!", modifiedCount: result.modifiedCount });
+    res.json({ status: "ok", updated: result.modifiedCount });
+    client.close();
   } catch (err) {
-    console.error("❌ Error updating AI lesson:", err);
-    res.status(500).json({ error: "Server error while updating AI lesson" });
+    console.error("Error updating AI data:", err);
+    res.status(500).json({ status: "error", message: "Database update failed" });
   }
 });
 
 
+app.put("/save-full-lesson-adminstyle/:unitId", async (req, res) => {
+  try {
+    const { unitId } = req.params;
+    const updateData = req.body;
+    const db = client.db("professional"); // professional DB
+    const collection = db.collection("physics"); // change dynamically per subject if needed
+
+    const result = await collection.updateOne(
+      { "units._id": unitId },
+      { $set: {
+          "units.$.explanation": updateData.explanation,
+          "units.$.audioFileId": updateData.audioFileId || [],
+          "units.$.imageUrls": updateData.imageUrls || [],
+          "units.$.aiVideoUrl": updateData.aiVideoUrl || "",
+          "units.$.aiTestData": updateData.aiTestData || []
+        } 
+      }
+    );
+
+    res.json({ status: "ok", updated: result.modifiedCount });
+  } catch (err) {
+    console.error("❌ Error saving AI lesson:", err);
+    res.status(500).json({ status: "error", message: "Failed to save lesson" });
+  }
+});
 
 
 
