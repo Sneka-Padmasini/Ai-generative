@@ -88,6 +88,9 @@ app.post("/generate-and-upload", async (req, res) => {
 // ✅ Route: Save to professional DB
 // ✅ Route: Save to MongoDB (Dynamic collection by subject)
  // Save AI lesson like AdminRight
+const { ObjectId } = require("mongodb");
+
+// Create new AI unit under parentId
 app.post("/save-full-lesson-adminstyle", async (req, res) => {
   const { courseName, subjectName, unit } = req.body;
 
@@ -96,22 +99,64 @@ app.post("/save-full-lesson-adminstyle", async (req, res) => {
   }
 
   try {
-    const dbClient = client.db(courseName);           // same DB
-    const collection = dbClient.collection(subjectName); // same collection
+    const dbClient = client.db(courseName);
+    const collection = dbClient.collection(subjectName);
 
-    // Append the AI unit under the parentId
+    if (!unit._id) unit._id = new ObjectId();
+
     const result = await collection.updateOne(
-      { _id: new require("mongodb").ObjectId(unit.parentId) },
+      { _id: new ObjectId(unit.parentId) },
       { $push: { units: unit } }
     );
 
-    console.log("✅ AI Lesson saved under AdminRight parent:", unit.parentId);
-    res.json({ message: "✅ AI lesson saved successfully!", modifiedCount: result.modifiedCount });
+    if (result.modifiedCount === 0) {
+      return res.status(404).json({ error: "Parent unit not found" });
+    }
+
+    res.json({ message: "✅ AI lesson saved successfully!", unitId: unit._id.toString() });
   } catch (err) {
     console.error("❌ Error saving AI lesson:", err);
     res.status(500).json({ error: "Server error while saving AI lesson" });
   }
 });
+
+// Update existing AI unit dynamically
+app.put("/save-full-lesson-adminstyle/:id", async (req, res) => {
+  const { id } = req.params;
+  const { courseName, subjectName, explanation, audioFileId, imageUrls } = req.body;
+
+  if (!courseName || !subjectName) {
+    return res.status(400).json({ error: "Missing courseName or subjectName" });
+  }
+
+  try {
+    const dbClient = client.db(courseName);
+    const collection = dbClient.collection(subjectName);
+
+    const result = await collection.updateOne(
+      { "units._id": new ObjectId(id) },
+      {
+        $set: {
+          "units.$.explanation": explanation,
+          "units.$.audioFileId": audioFileId,
+          "units.$.imageUrls": imageUrls
+        }
+      }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ error: "Unit not found" });
+    }
+
+    res.json({ message: "✅ AI lesson updated successfully!", modifiedCount: result.modifiedCount });
+  } catch (err) {
+    console.error("❌ Error updating AI lesson:", err);
+    res.status(500).json({ error: "Server error while updating AI lesson" });
+  }
+});
+
+
+
 
 
 

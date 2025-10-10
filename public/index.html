@@ -225,403 +225,134 @@
   </main>
 
   <!-- ✅ All JS code goes here -->
-  <script>
-    document.addEventListener("DOMContentLoaded", () => {
-      // --- Read URL Params ---
-      const urlParams = new URLSearchParams(window.location.search);
-      const returnTo = urlParams.get("returnTo") || "https://genuine-sopapillas-c1e756.netlify.app/";
-      const subtopic = urlParams.get("subtopic") || "";
-      const description = urlParams.get("description") || "";
-const subject = urlParams.get("subject") || "General";
-
-      console.log("✅ URL Params:", { subtopic, description }); // DEBUG
-
-      // Fill inputs
-      document.getElementById("subtopic").value = subtopic;
-      document.getElementById("originalDescription").value = decodeURIComponent(description);
-
-      // --- Quiz Handling ---
-      const questions = [];
-
-      function addQuestion() {
-        const q = document.getElementById("questionInput").value.trim();
-        const a = document.getElementById("answerInput").value.trim();
-        if (!q || !a) return alert("Please enter both question and answer.");
-        questions.push({ question: q, answer: a });
-        document.getElementById("questionInput").value = "";
-        document.getElementById("answerInput").value = "";
-        updateQuestionDisplay();
-      }
-
-      function updateQuestionDisplay() {
-        const container = document.getElementById("addedQuestions");
-        container.innerHTML = "";
-        questions.forEach((qa, index) => {
-          const div = document.createElement("div");
-          div.className = "question-item";
-          div.innerHTML = `<strong>Q${index + 1}:</strong> ${qa.question}<br/><strong>A:</strong> ${qa.answer}`;
-          container.appendChild(div);
-        });
-      }
-
-      // --- Generate Video ---
-      async function generateVideo() {
-        const descriptionToUse =
-          document.getElementById("customDescription").value.trim() ||
-          document.getElementById("originalDescription").value.trim();
-
-        const loading = document.getElementById("loadingMessage");
-        const video = document.getElementById("video");
-
-        // Show loading spinner + message, hide video while waiting
-        loading.style.display = "block";
-        video.style.display = "none";
-
-        try {
-          const res = await fetch("https://ai-generative-rhk1.onrender.com/generate-and-upload", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ subtopic, description: descriptionToUse })
-          });
-
-          const data = await res.json();
-
-          // Hide loading, show video
-          loading.style.display = "none";
-          video.style.display = "block";
-
-          video.src = data.firebase_video_url;
-          video.onended = () => startVoiceQuiz();
-        } catch (err) {
-          console.error("❌ Error generating video:", err);
-          loading.innerHTML = `<p style="color:red;">❌ Failed to generate video. Try again.</p>`;
-        }
-      }
-
-      // --- Subtitle Simulation ---
-      video.onplay = () => {
-        const descriptionToUse =
-          document.getElementById("customDescription").value.trim() ||
-          document.getElementById("originalDescription").value.trim();
-
-        const lines = descriptionToUse.split(/[.?!]/).filter(x => x.trim());
-        let i = 0;
-        const subtitleBox = document.getElementById("subtitleBox");
-
-        function showNext() {
-          if (i < lines.length && !video.paused && !video.ended) {
-            subtitleBox.textContent = lines[i].trim();
-            i++;
-            setTimeout(showNext, 3000); // change every 3s
-          } else if (video.ended) {
-            subtitleBox.textContent = ""; // clear after video ends
-          }
-        }
-        showNext();
-      };
-
-      function addOrUpdateParam(url, key, value) {
-        try {
-          const u = new URL(url);
-          u.searchParams.set(key, value);
-          return u.toString();
-        } catch {
-          // if returnTo was somehow a relative path, fall back safely
-          return url + (url.includes("?") ? "&" : "?") + `${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
-        }
-      }
-
-      // // --- Save Lesson ---
-      // async function saveToDatabase() {
-      //   const subtopicToUse = document.getElementById("subtopic").value.trim();
-      //   const descriptionToUse =
-      //     document.getElementById("customDescription").value.trim() ||
-      //     document.getElementById("originalDescription").value.trim();
-      //   const videoUrl = document.getElementById("video").src;
-      //   if (!videoUrl) return alert("Please generate video first.");
-
-      //   const res = await fetch("https://ai-generative-rhk1.onrender.com/save-full-data", {
-      //     method: "POST",
-      //     headers: { "Content-Type": "application/json" },
-      //     body: JSON.stringify({
-      //       subtopic: subtopicToUse,
-      //       description: descriptionToUse,
-      //       questions,
-      //       video_url: videoUrl
-      //     })
-      //   });
-
-      //   const result = await res.json();
-
-      //   if (result && result.message) {
-      //     // Go back to EXACT React page, adding ?saved=true (or &saved=true)
-      //     const backUrl = addOrUpdateParam(returnTo, "saved", "true");
-      //     window.location.href = backUrl;
-      //   } else {
-      //     alert("Save failed, please try again!");
-      //   }
-      // }
-async function saveFullLesson() {
+ <script>
+document.addEventListener("DOMContentLoaded", () => {
   const urlParams = new URLSearchParams(window.location.search);
-  const courseName = urlParams.get("courseName");
-  const subjectName = urlParams.get("subjectName");
-  const parentId = urlParams.get("parentId"); // MUST pass parentId
+  const returnTo = urlParams.get("returnTo") || "https://genuine-sopapillas-c1e756.netlify.app/";
+  const subtopic = urlParams.get("subtopic") || "";
+  const description = decodeURIComponent(urlParams.get("description") || "");
+  const subject = urlParams.get("subject") || "Physics"; // change default as needed
+  const unitIdFromUrl = urlParams.get("unitId") || null; // existing unit _id
+  const parentIdFromUrl = urlParams.get("parentId") || null;
 
-  const subtopic = document.getElementById("subtopic").value.trim();
-  const description =
-    document.getElementById("customDescription").value.trim() ||
-    document.getElementById("originalDescription").value.trim();
-  const video_url = document.getElementById("video").src;
+  // --- Fill Inputs ---
+  document.getElementById("subtopic").value = subtopic;
+  document.getElementById("originalDescription").value = description;
 
-  if (!courseName || !subjectName || !parentId || !subtopic || !description || !video_url) {
-    return alert("⚠️ Missing required fields! Make sure parentId, course, subject, subtopic, and video exist.");
-  }
+  // --- State for saving ---
+  let editingUnitId = unitIdFromUrl;
+  let parentId = parentIdFromUrl;
+  let existingAudio = [];
+  let existingImages = [];
+  let newAudio = [];  // will fill after AI video generation
+  let newImages = []; // optional
 
-  // Collect quiz questions
+  // --- Quiz handling (unchanged) ---
   const questions = [];
-  document.querySelectorAll("#addedQuestions .question-item").forEach((div, index) => {
-    const qText = div.querySelector("strong")?.innerText.replace(/^Q\d+:/,"").trim();
-    const aText = div.querySelector("br")?.nextSibling?.textContent.replace(/^A:/,"").trim();
-    if(qText && aText) questions.push({ question: qText, answer: aText });
-  });
-
-  // Build unit object (AdminRight style)
-  const unitDoc = {
-    unitName: subtopic,
-    parentId: parentId,
-    explanation: description,
-    audioFileId: [],
-    imageUrls: [],
-    units: [],
-    test: questions,
-    video_url,            // AI video URL
-    date_added: new Date()
-  };
-
-  console.log("📤 Saving unit like AdminRight:", unitDoc);
-
-  try {
-    const res = await fetch("https://ai-generative-rhk1.onrender.com/save-full-lesson-adminstyle", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ courseName, subjectName, unit: unitDoc })
-    });
-
-    const result = await res.json();
-    if (res.ok) {
-      alert("✅ AI Lesson saved successfully under AdminRight format!");
-      console.log("✅ Server response:", result);
-    } else {
-      alert("❌ Failed to save: " + (result.error || "Unknown error"));
-      console.error("❌ Server error:", result);
-    }
-  } catch (err) {
-    console.error("❌ Error saving lesson:", err);
-    alert("❌ Something went wrong while saving the lesson.");
+  function addQuestion() {
+    const q = document.getElementById("questionInput").value.trim();
+    const a = document.getElementById("answerInput").value.trim();
+    if (!q || !a) return alert("Please enter both question and answer.");
+    questions.push({ question: q, answer: a });
+    document.getElementById("questionInput").value = "";
+    document.getElementById("answerInput").value = "";
+    updateQuestionDisplay();
   }
-}
-
-
-      // === Voice Quiz (robust) ===
-      const SPEAK_QUESTIONS = true;                  // <-- speaks each question
-      const QUESTION_TTS_PAUSE_MS = 800;             // extra gap after TTS before listening
-
-      // listening badge (unchanged)
-      const listeningBadge = document.createElement('div');
-      listeningBadge.textContent = "🎤 Listening…";
-      Object.assign(listeningBadge.style, {
-        position: 'fixed',
-        right: '16px',
-        bottom: '16px',
-        padding: '10px 14px',
-        background: '#2ecc71',
-        color: '#fff',
-        borderRadius: '8px',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-        fontWeight: '600',
-        display: 'none',
-        zIndex: 9999
-      });
-      document.body.appendChild(listeningBadge);
-      const showListening = (on) => (listeningBadge.style.display = on ? 'block' : 'none');
-
-      function speak(text) {
-        return new Promise((resolve) => {
-          const utter = new SpeechSynthesisUtterance(text);
-          utter.lang = 'en-US';
-          utter.onend = () => resolve();
-          speechSynthesis.speak(utter);
-        });
-      }
-
-      function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-      function listen(callback) {
-        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SR) { alert("Speech recognition not supported"); callback(""); return; }
-
-        // Abort any previous session
-        if (window.activeRecognition) {
-          try { window.activeRecognition.abort(); } catch (_) { }
-        }
-
-        // stop any TTS still playing
-        try { speechSynthesis.cancel(); } catch (_) { }
-
-        const recognition = new SR();
-        window.activeRecognition = recognition;
-        recognition.lang = "en-US";
-        recognition.interimResults = false;
-        recognition.maxAlternatives = 1;
-        recognition.continuous = false;
-
-        const videoEl = document.getElementById("video");
-        const wasMuted = videoEl.muted;
-        videoEl.muted = true;
-
-        showListening(true);
-        recognition.start();
-
-        recognition.onresult = (event) => {
-          showListening(false);
-          videoEl.muted = wasMuted;
-          const transcript = event.results[0][0].transcript || "";
-          callback(transcript);
-        };
-
-        recognition.onerror = () => {
-          showListening(false);
-          videoEl.muted = wasMuted;
-          callback("");
-        };
-
-        recognition.onend = () => {
-          showListening(false);
-          videoEl.muted = wasMuted;
-        };
-      }
-
-      function normalizeAnswer(s) {
-        if (!s) return "";
-        return s
-          .toLowerCase()
-          .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-          .replace(/[^a-z0-9\s]/g, '')
-          .replace(/\b(the|a|an|is|are|was|were|of|to|and|in|on|at|for)\b/g, ' ')
-          .replace(/\s+/g, ' ')
-          .trim();
-      }
-
-      function levenshtein(a, b) {
-        const m = a.length, n = b.length;
-        if (m === 0) return n;
-        if (n === 0) return m;
-        const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
-        for (let i = 0; i <= m; i++) dp[i][0] = i;
-        for (let j = 0; j <= n; j++) dp[0][j] = j;
-        for (let i = 1; i <= m; i++) {
-          for (let j = 1; j <= n; j++) {
-            const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-            dp[i][j] = Math.min(
-              dp[i - 1][j] + 1,
-              dp[i][j - 1] + 1,
-              dp[i - 1][j - 1] + cost
-            );
-          }
-        }
-        return dp[m][n];
-      }
-
-
-      function isAnswerCorrect(studentRaw, correctRaw) {
-        if (!studentRaw || !correctRaw) return false;
-
-        // ✅ Split into words
-        const correctWords = correctRaw.toLowerCase().trim().split(/\s+/);
-        const spokenWords = studentRaw.toLowerCase().trim().split(/\s+/);
-
-        let matchedCount = 0;
-
-        correctWords.forEach(word => {
-          if (spokenWords.includes(word)) {
-            matchedCount++;
-          }
-        });
-
-        const matchPercentage = (matchedCount / correctWords.length) * 100;
-
-        console.log("Answer Match %:", matchPercentage);
-
-        // ✅ Require at least 80% words to match
-        return matchPercentage >= 80;
-      }
-
-
-      function startVoiceQuiz() {
-        if (!questions.length) return;
-        let index = 0;
-        const quizBox = document.getElementById("quizDisplay");
-        quizBox.style.display = "block";
-
-        const qText = document.getElementById("currentQuestionText");
-        const aSpoken = document.getElementById("spokenAnswerText");
-        const aCorrect = document.getElementById("correctAnswerText");
-
-        async function askQuestion() {
-          if (index >= questions.length) {
-            await speak("Quiz completed. Well done!");
-            quizBox.style.display = "none";
-            return;
-          }
-
-          const current = questions[index];
-
-          // Show ONLY the question first; hide the answer now
-          qText.textContent = current.question;
-          aSpoken.textContent = "...waiting...";
-          aSpoken.style.color = "#333";
-          aCorrect.textContent = "";                 // <-- hide answer until after
-
-          // Optionally speak the question
-          if (SPEAK_QUESTIONS) {
-            await speak(current.question);
-            await delay(QUESTION_TTS_PAUSE_MS);      // gap before listening
-          } else {
-            await delay(400);
-          }
-
-          // Listen for student's answer
-          listen(async (spokenAnswer) => {
-            const ok = isAnswerCorrect(spokenAnswer, current.answer);
-
-            aSpoken.textContent = spokenAnswer || "(No answer detected)";
-            aSpoken.style.color = ok ? "green" : "red";
-
-            // NOW reveal the correct answer (after student answered)
-            aCorrect.textContent = current.answer;
-
-            if (ok) {
-              await speak("Correct answer, well done!");
-            } else {
-              await speak(`Wrong answer. The correct answer is ${current.answer}`);
-            }
-
-            index++;
-            setTimeout(askQuestion, 900);
-          });
-        }
-
-        askQuestion();
-      }
-
-      // expose functions used by inline onclick handlers
-      window.addQuestion = addQuestion;
-      window.generateVideo = generateVideo;
-      window.saveFullLesson = saveFullLesson;
-      window.startVoiceQuiz = startVoiceQuiz;
-
+  function updateQuestionDisplay() {
+    const container = document.getElementById("addedQuestions");
+    container.innerHTML = "";
+    questions.forEach((qa, index) => {
+      const div = document.createElement("div");
+      div.className = "question-item";
+      div.innerHTML = `<strong>Q${index + 1}:</strong> ${qa.question}<br/><strong>A:</strong> ${qa.answer}`;
+      container.appendChild(div);
     });
-  </script>
+  }
+
+  // --- Generate Video ---
+  async function generateVideo() {
+    const descriptionToUse =
+      document.getElementById("customDescription").value.trim() ||
+      document.getElementById("originalDescription").value.trim();
+
+    const loading = document.getElementById("loadingMessage");
+    const video = document.getElementById("video");
+
+    loading.style.display = "block";
+    video.style.display = "none";
+
+    try {
+      const res = await fetch("https://ai-generative-rhk1.onrender.com/generate-and-upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subtopic, description: descriptionToUse })
+      });
+      const data = await res.json();
+      loading.style.display = "none";
+      video.style.display = "block";
+      video.src = data.firebase_video_url;
+
+      // store AI video URL for saving
+      newAudio = [data.firebase_video_url];
+    } catch (err) {
+      console.error("❌ Error generating video:", err);
+      loading.innerHTML = `<p style="color:red;">❌ Failed to generate video. Try again.</p>`;
+    }
+  }
+
+  // --- Save Lesson ---
+  const saveFullLesson = async () => {
+  try {
+    const payload = {
+      courseName: "professional",      // same as server DB
+      subjectName: subject,            // from URL param
+      explanation: document.getElementById("customDescription").value.trim() || description,
+      audioFileId: [...existingAudio, ...newAudio],
+      imageUrls: [...existingImages, ...newImages]
+    };
+
+    let response;
+
+    if (editingUnitId) {
+      // Update existing unit
+      response = await fetch(
+        `https://ai-generative-rhk1.onrender.com/save-full-lesson-adminstyle/${editingUnitId}`,
+        { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }
+      );
+    } else {
+      // Create new unit
+      payload.unitName = subtopic;
+      payload.parentId = parentId;
+
+      response = await fetch(
+        "https://ai-generative-rhk1.onrender.com/save-full-lesson-adminstyle",
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }
+      );
+    }
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Server error");
+
+    console.log("✅ Saved successfully:", data);
+
+    // Redirect back to admin page
+    const backUrl = new URL(returnTo);
+    backUrl.searchParams.set("saved", "true");
+    window.location.href = backUrl.toString();
+  } catch (err) {
+    console.error("❌ Server error:", err);
+    alert("Failed to save lesson. Check console for details.");
+  }
+};
+
+
+  // --- expose functions for buttons ---
+  window.addQuestion = addQuestion;
+  window.generateVideo = generateVideo;
+  window.saveFullLesson = saveFullLesson;
+});
+</script>
+
 
 </body>
 
