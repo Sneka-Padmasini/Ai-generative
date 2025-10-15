@@ -196,6 +196,7 @@
   <script>
     document.addEventListener("DOMContentLoaded", () => {
       const urlParams = new URLSearchParams(window.location.search);
+      // const urlParams = new URLSearchParams(window.location.search);
       const returnTo = urlParams.get("returnTo") || "/";
       const subtopic = urlParams.get("subtopic") || "";
       const description = decodeURIComponent(urlParams.get("description") || "");
@@ -224,6 +225,7 @@
       };
 
       // 🎥 Generate AI Video
+      // 🎥 Generate AI Video
       window.generateVideo = async () => {
         const desc = document.getElementById("customDescription").value.trim() || description;
         const loading = document.getElementById("loadingMessage");
@@ -238,7 +240,11 @@
             body: JSON.stringify({ subtopic, description: desc }),
           });
           const data = await res.json();
+
+          // ✅ Persist the generated URL globally and locally
           newAudio = [data.firebase_video_url];
+          localStorage.setItem("generatedAIVideoUrl", data.firebase_video_url);
+
           loading.style.display = "none";
           video.style.display = "block";
           video.src = data.firebase_video_url;
@@ -248,14 +254,21 @@
         }
       };
 
+
       // 💾 Save AI Video + Quiz
       window.saveFullLesson = async () => {
         try {
+          const aiUrl =
+            (newAudio && newAudio.length > 0 && newAudio[0]) ||
+            localStorage.getItem("generatedAIVideoUrl") ||
+            "";
+
           const payload = {
-            explanation: document.getElementById("customDescription").value.trim() || description,
+            explanation:
+              document.getElementById("customDescription").value.trim() || description,
             audioFileId: newAudio,
             imageUrls: [],
-            aiVideoUrl: newAudio[0] || "",
+            aiVideoUrl: aiUrl,
             aiTestData: questions,
           };
 
@@ -271,18 +284,22 @@
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || "Failed to save");
 
-          // ✅ Save video URL to localStorage for AdminRight
-          if (payload.aiVideoUrl) {
-            localStorage.setItem("generatedAIVideoUrl", payload.aiVideoUrl);
-          }
+          // ✅ Store for React page
+          if (aiUrl) localStorage.setItem("generatedAIVideoUrl", aiUrl);
 
           alert("✅ AI Video and Quiz saved successfully!");
-          window.location.href = returnTo; // Go back to AdminRight
+
+          // ✅ Redirect back to admin page or selected lesson
+          const returnTo = urlParams.get("returnTo") || "/";
+          window.location.href = returnTo;
+
         } catch (err) {
           console.error(err);
           alert("❌ Error saving lesson. Check console.");
         }
       };
+
+
     });
   </script>
 </body>
