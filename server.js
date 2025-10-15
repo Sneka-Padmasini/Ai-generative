@@ -10,8 +10,20 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ✅ Middleware
-app.use(cors());
+// ✅ Middleware
+app.use(
+  cors({
+    origin: "*", // or use your Netlify domain: "https://majestic-frangollo-031fed.netlify.app"
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
+
+// ✅ Handle preflight requests explicitly
+app.options("*", cors());
+
 app.use(express.json());
+
 
 // ✅ Serve static files from "public" folder (e.g. index.html, CSS, JS)
 app.use(express.static(path.join(__dirname, "public")));
@@ -121,13 +133,14 @@ app.put("/save-full-lesson-adminstyle/:unitId", async (req, res) => {
 
     const result = await collection.updateOne(
       { "units._id": unitId },
-      { $set: {
+      {
+        $set: {
           "units.$.explanation": updateData.explanation,
           "units.$.audioFileId": updateData.audioFileId || [],
           "units.$.imageUrls": updateData.imageUrls || [],
           "units.$.aiVideoUrl": updateData.aiVideoUrl || "",
           "units.$.aiTestData": updateData.aiTestData || []
-        } 
+        }
       }
     );
 
