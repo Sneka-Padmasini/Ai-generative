@@ -114,10 +114,6 @@
       display: none;
     }
 
-    #quizDisplay p {
-      margin: 8px 0;
-    }
-
     .two-column {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -125,15 +121,9 @@
       align-items: center;
     }
 
-    .two-column input {
-      height: 45px;
-    }
-
     .spinner {
       border: 6px solid #f3f3f3;
-      /* Light gray */
       border-top: 6px solid #4CAF50;
-      /* Green */
       border-radius: 50%;
       width: 40px;
       height: 40px;
@@ -151,7 +141,7 @@
       }
     }
 
-    @media (max-width: 700px) {
+    @media(max-width:700px) {
       .two-column {
         grid-template-columns: 1fr;
       }
@@ -170,10 +160,8 @@
       <h2>Lesson Details</h2>
       <label>Subtopic:</label>
       <input type="text" id="subtopic" readonly />
-
       <label>Lesson Description:</label>
       <textarea id="originalDescription" readonly></textarea>
-
       <label>Or Write Your Own:</label>
       <textarea id="customDescription" placeholder="Type your lesson description here..."></textarea>
     </section>
@@ -186,7 +174,6 @@
         <input type="text" id="answerInput" placeholder="Enter answer..." />
       </div>
       <button type="button" onclick="addQuestion()">➕ Add Question</button>
-
       <div id="questionsList">
         <h3>✅ Added Questions:</h3>
         <div id="addedQuestions"></div>
@@ -197,131 +184,107 @@
     <section>
       <h2>🎥 Lesson Video</h2>
       <button type="button" onclick="generateVideo()">Generate Video</button>
-
-      <!-- Video Player -->
       <video id="video" controls></video>
-
-      <!-- ✅ Loading Spinner + Message -->
-      <div id="loadingMessage" style="display: none; text-align: center; margin-top: 20px;">
+      <div id="loadingMessage" style="display:none;text-align:center;margin-top:20px;">
         <div class="spinner"></div>
-        <p style="font-size: 1.2rem; color: #555; margin-top: 10px;">Generating your AI video, please wait...</p>
+        <p style="font-size:1.2rem;color:#555;margin-top:10px;">Generating your AI video, please wait...</p>
       </div>
-
-      <!-- Subtitle Box -->
-      <div id="subtitleBox" style="margin-top:10px; font-size:1.1rem; font-weight:600; color:#2e7d32;"></div>
-
-      <!-- Save Button -->
       <button type="button" onclick="saveFullLesson()">💾 Save Lesson</button>
-    </section>
-
-
-    <!-- Quiz Display -->
-    <section id="quizDisplay">
-      <h2>📝 Voice Quiz</h2>
-      <p><strong>Question:</strong> <span id="currentQuestionText"></span></p>
-      <p><strong>Your Answer:</strong> <span id="spokenAnswerText"></span></p>
-      <p><strong>Correct Answer:</strong> <span id="correctAnswerText"></span></p>
     </section>
   </main>
 
-  <!-- ✅ All JS code goes here -->
- <script>
-document.addEventListener("DOMContentLoaded", () => {
-  const urlParams = new URLSearchParams(window.location.search);
-  const returnTo = urlParams.get("returnTo") || "/";
-  const subtopic = urlParams.get("subtopic") || "";
-  const description = decodeURIComponent(urlParams.get("description") || "");
-  const subject = urlParams.get("subjectName") || "Physics";
-  const editingUnitId = urlParams.get("unitId");
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const returnTo = urlParams.get("returnTo") || "/";
+      const subtopic = urlParams.get("subtopic") || "";
+      const description = decodeURIComponent(urlParams.get("description") || "");
+      const subject = urlParams.get("subjectName") || "Physics";
+      const editingUnitId = urlParams.get("unitId");
 
-  // Fill inputs
-  document.getElementById("subtopic").value = subtopic;
-  document.getElementById("originalDescription").value = description;
+      document.getElementById("subtopic").value = subtopic;
+      document.getElementById("originalDescription").value = description;
 
-  let newAudio = [];
-  const questions = [];
+      let newAudio = [];
+      const questions = [];
 
-  // Add question
-  window.addQuestion = () => {
-    const q = document.getElementById("questionInput").value.trim();
-    const a = document.getElementById("answerInput").value.trim();
-    if (!q || !a) return alert("Enter both question & answer");
-    questions.push({ question: q, answer: a });
-    document.getElementById("questionInput").value = "";
-    document.getElementById("answerInput").value = "";
-    updateQuestionDisplay();
-  };
-
-  const updateQuestionDisplay = () => {
-    const container = document.getElementById("addedQuestions");
-    container.innerHTML = "";
-    questions.forEach((qa, idx) => {
-      const div = document.createElement("div");
-      div.className = "question-item";
-      div.innerHTML = `<strong>Q${idx + 1}:</strong> ${qa.question}<br/><strong>A:</strong> ${qa.answer}`;
-      container.appendChild(div);
-    });
-  };
-
-  // Generate AI Video
-  window.generateVideo = async () => {
-    const desc = document.getElementById("customDescription").value.trim() || description;
-    const loading = document.getElementById("loadingMessage");
-    const video = document.getElementById("video");
-
-    loading.style.display = "block";
-    video.style.display = "none";
-
-    try {
-      const res = await fetch("https://ai-generative-rhk1.onrender.com/generate-and-upload", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subtopic, description: desc }),
-      });
-      const data = await res.json();
-      newAudio = [data.firebase_video_url];
-      loading.style.display = "none";
-      video.style.display = "block";
-      video.src = data.firebase_video_url;
-    } catch (err) {
-      console.error(err);
-      loading.innerHTML = "<p style='color:red;'>❌ Failed to generate video.</p>";
-    }
-  };
-
-  // Save AI Video + Quiz to professional DB
-  window.saveFullLesson = async () => {
-    try {
-      const payload = {
-        explanation: document.getElementById("customDescription").value.trim() || description,
-        audioFileId: newAudio,              // existing audios can be added if needed
-        imageUrls: [],                       // if you have images, include them here
-        aiVideoUrl: newAudio[0] || "",
-        aiTestData: questions
+      // ➕ Add question
+      window.addQuestion = () => {
+        const q = document.getElementById("questionInput").value.trim();
+        const a = document.getElementById("answerInput").value.trim();
+        if (!q || !a) return alert("Enter both question & answer");
+        questions.push({ question: q, answer: a });
+        document.getElementById("questionInput").value = "";
+        document.getElementById("answerInput").value = "";
+        const container = document.getElementById("addedQuestions");
+        const div = document.createElement("div");
+        div.className = "question-item";
+        div.innerHTML = `<strong>Q${questions.length}:</strong> ${q}<br/><strong>A:</strong> ${a}`;
+        container.appendChild(div);
       };
 
-      const res = await fetch(
-        `https://ai-generative-rhk1.onrender.com/save-full-lesson-adminstyle/${editingUnitId}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
+      // 🎥 Generate AI Video
+      window.generateVideo = async () => {
+        const desc = document.getElementById("customDescription").value.trim() || description;
+        const loading = document.getElementById("loadingMessage");
+        const video = document.getElementById("video");
+        loading.style.display = "block";
+        video.style.display = "none";
+
+        try {
+          const res = await fetch("https://ai-generative-rhk1.onrender.com/generate-and-upload", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ subtopic, description: desc }),
+          });
+          const data = await res.json();
+          newAudio = [data.firebase_video_url];
+          loading.style.display = "none";
+          video.style.display = "block";
+          video.src = data.firebase_video_url;
+        } catch (err) {
+          console.error(err);
+          loading.innerHTML = "<p style='color:red;'>❌ Failed to generate video.</p>";
         }
-      );
+      };
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to save");
-      alert("✅ AI Video and Quiz saved successfully!");
-      window.location.href = returnTo;
-    } catch (err) {
-      console.error(err);
-      alert("❌ Error saving lesson. Check console.");
-    }
-  };
-});
-</script>
+      // 💾 Save AI Video + Quiz
+      window.saveFullLesson = async () => {
+        try {
+          const payload = {
+            explanation: document.getElementById("customDescription").value.trim() || description,
+            audioFileId: newAudio,
+            imageUrls: [],
+            aiVideoUrl: newAudio[0] || "",
+            aiTestData: questions,
+          };
 
+          const res = await fetch(
+            `https://ai-generative-rhk1.onrender.com/save-full-lesson-adminstyle/${editingUnitId}`,
+            {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            }
+          );
 
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "Failed to save");
+
+          // ✅ Save video URL to localStorage for AdminRight
+          if (payload.aiVideoUrl) {
+            localStorage.setItem("generatedAIVideoUrl", payload.aiVideoUrl);
+          }
+
+          alert("✅ AI Video and Quiz saved successfully!");
+          window.location.href = returnTo; // Go back to AdminRight
+        } catch (err) {
+          console.error(err);
+          alert("❌ Error saving lesson. Check console.");
+        }
+      };
+    });
+  </script>
 </body>
 
 </html>
