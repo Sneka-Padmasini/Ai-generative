@@ -1,4 +1,4 @@
-// ✅ server.js — Full Dynamic AI Video + MongoDB + Frontend
+// ✅ server.js — Full Dynamic AI Video + MongoDB + Frontend + Proper CORS + Validation
 
 const express = require("express");
 const axios = require("axios");
@@ -10,16 +10,21 @@ require("dotenv").config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ✅ Middleware
-app.use(
-  cors({
-    origin: "https://majestic-frangollo-031fed.netlify.app",
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true,
-  })
-);
-app.options("*", cors());
+// ✅ CORS configuration
+const corsOptions = {
+  origin: [
+    "https://majestic-frangollo-031fed.netlify.app",
+    "http://localhost:5173",
+    "http://localhost:5174",
+  ],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
+};
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
+
+// ✅ JSON body parsing
 app.use(express.json());
 
 // ✅ Serve frontend
@@ -34,58 +39,94 @@ if (!MONGO_URI) {
   console.error("❌ Missing MONGO_URI in .env");
   process.exit(1);
 }
-
 const client = new MongoClient(MONGO_URI);
 let db;
 let collections = {};
 
-client.connect().then(() => {
-  db = client.db("professional");
-  const subjects = ["Botany", "Chemistry", "General", "Maths", "Physics", "Zoology"];
-  subjects.forEach((s) => (collections[s.toLowerCase()] = db.collection(s.toLowerCase())));
-  console.log("✅ Connected to MongoDB Professional DB");
-});
+client.connect()
+  .then(() => {
+    db = client.db("professional");
+    const subjects = ["Botany", "Chemistry", "General", "Maths", "Physics", "Zoology"];
+    subjects.forEach((s) => (collections[s.toLowerCase()] = db.collection(s.toLowerCase())));
+    console.log("✅ Connected to MongoDB Professional DB");
+  })
+  .catch(err => {
+    console.error("❌ MongoDB connection error:", err);
+  });
 
 // ✅ D-ID API key
+if (!process.env.DID_API_KEY) {
+  console.error("❌ Missing DID_API_KEY in .env");
+  process.exit(1);
+}
 const DID_API_KEY = `Basic ${Buffer.from(process.env.DID_API_KEY).toString("base64")}`;
 
-// ✅ Generate AI video
+// ✅ Generate AI video (D-ID) with validation
 app.post("/generate-and-upload", async (req, res) => {
   const { subtopic, description } = req.body;
-  if (!subtopic || !description) return res.status(400).json({ error: "Missing subtopic or description" });
+
+  if (!subtopic || !description || description.trim().length < 3) {
+    return res.status(400).json({
+      error: "Description must be at least 3 characters for AI video generation."
+    });
+  }
 
   try {
+    // Start video generation
     const didResponse = await axios.post(
       "https://api.d-id.com/talks",
-      { script: { type: "text", input: description, subtitles: "false" }, presenter_id: "amy-jcwq6j4g" },
-      { headers: { Authorization: DID_API_KEY, "Content-Type": "application/json" } }
+      {
+        script: { type: "text", input: description, subtitles: "false" },
+        presenter_id: "amy-jcwq6j4g",
+      },
+      {
+        headers: { Authorization: DID_API_KEY, "Content-Type": "application/json" },
+        timeout: 60000,
+      }
     );
 
     const talkId = didResponse.data.id;
     let videoUrl = "";
     let status = "notDone";
 
+    // Poll until video is ready
     while (status !== "done") {
-      const poll = await axios.get(`https://api.d-id.com/talks/${talkId}`, { headers: { Authorization: DID_API_KEY } });
+      const poll = await axios.get(`https://api.d-id.com/talks/${talkId}`, {
+        headers: { Authorization: DID_API_KEY },
+        timeout: 30000,
+      });
+
       status = poll.data.status;
-      if (status === "done") videoUrl = poll.data.result_url;
-      else await new Promise((r) => setTimeout(r, 2000));
+      if (status === "done") {
+        videoUrl = poll.data.result_url;
+      } else if (status === "failed") {
+        throw new Error("D-ID video generation failed");
+      } else {
+        await new Promise(r => setTimeout(r, 2000));
+      }
     }
 
+    console.log("✅ D-ID Video ready:", videoUrl);
     res.json({ firebase_video_url: videoUrl });
   } catch (err) {
-    console.error("❌ D-ID API Error:", err.response?.data || err.message);
-    res.status(500).json({ error: "Video generation failed" });
+    console.error("❌ D-ID API Error:", err.response?.data || err.message || err);
+    res.status(500).json({
+      error:
+        err.response?.data?.details ||
+        err.response?.data?.error ||
+        err.message ||
+        "Video generation failed"
+    });
   }
 });
 
-// ✅ Add Subtopic (new route)
+// ✅ Add Subtopic
 app.post("/api/addSubtopic", async (req, res) => {
   try {
     const payload = req.body;
     if (!payload.unitName) return res.status(400).json({ error: "Missing unitName" });
 
-    const collection = db.collection("Content"); // adjust if needed
+    const collection = db.collection("Content");
     const result = await collection.insertOne(payload);
 
     res.json({ status: "ok", insertedId: result.insertedId });
@@ -95,7 +136,7 @@ app.post("/api/addSubtopic", async (req, res) => {
   }
 });
 
-// ✅ Update AI video + test data
+// ✅ Update AI video + test data dynamically
 app.post("/api/content/updateUnitAI", async (req, res) => {
   try {
     const { unitId, videoUrl, aiTestData } = req.body;
