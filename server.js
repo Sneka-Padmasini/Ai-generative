@@ -1,8 +1,9 @@
-// server.js — D-ID + MongoDB + Frontend serving
+// ✅ server.js — Full Dynamic AI Video + MongoDB + Frontend
+
 const express = require("express");
 const axios = require("axios");
 const cors = require("cors");
-const { MongoClient } = require("mongodb");
+const { MongoClient, ObjectId } = require("mongodb");
 const path = require("path");
 require("dotenv").config();
 
@@ -10,56 +11,49 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ✅ Middleware
-// ✅ Middleware
 app.use(
   cors({
-    origin: "*", // or use your Netlify domain: "https://majestic-frangollo-031fed.netlify.app"
+    origin: "*", // or your Netlify/Render domain
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
-
-// ✅ Handle preflight requests explicitly
 app.options("*", cors());
-
 app.use(express.json());
 
-
-// ✅ Serve static files from "public" folder (e.g. index.html, CSS, JS)
+// ✅ Serve frontend (index.html etc.)
 app.use(express.static(path.join(__dirname, "public")));
-
-// ✅ Serve index.html at "/"
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-// ✅ MongoDB Connection (professional DB)
+// ✅ MongoDB connection
 const MONGO_URI = process.env.MONGO_URI;
 if (!MONGO_URI) {
-  console.error("❌ Missing MONGO_URI in .env file");
+  console.error("❌ Missing MONGO_URI in .env");
   process.exit(1);
 }
-
 const client = new MongoClient(MONGO_URI);
 let db;
 let collections = {};
 
 client.connect().then(() => {
-  db = client.db("professional"); // ✅ professional DB
-  ["Botany", "Chemistry", "General", "Maths", "Physics", "Zoology"].forEach(
-    (name) => {
-      collections[name.toLowerCase()] = db.collection(name);
-    }
-  );
+  db = client.db("professional");
+  const subjects = ["Botany", "Chemistry", "General", "Maths", "Physics", "Zoology"];
+  subjects.forEach((s) => (collections[s.toLowerCase()] = db.collection(s.toLowerCase())));
   console.log("✅ Connected to MongoDB Professional DB");
 });
 
-// ✅ D-ID API Key (from .env, already Base64 encoded)
+// ✅ D-ID API key
 const DID_API_KEY = `Basic ${Buffer.from(process.env.DID_API_KEY).toString("base64")}`;
 
-// ✅ Route: Generate Video from D-ID
+// ✅ Generate AI video (D-ID)
 app.post("/generate-and-upload", async (req, res) => {
   const { subtopic, description } = req.body;
+
+  if (!description || !subtopic) {
+    return res.status(400).json({ error: "Missing subtopic or description" });
+  }
 
   try {
     const didResponse = await axios.post(
@@ -72,6 +66,7 @@ app.post("/generate-and-upload", async (req, res) => {
     );
 
     const talkId = didResponse.data.id;
+    console.log("🎬 D-ID Talk started:", talkId);
 
     let videoUrl = "";
     let status = "notDone";
@@ -80,67 +75,68 @@ app.post("/generate-and-upload", async (req, res) => {
       const poll = await axios.get(`https://api.d-id.com/talks/${talkId}`, {
         headers: { Authorization: DID_API_KEY },
       });
-
       status = poll.data.status;
       if (status === "done") videoUrl = poll.data.result_url;
       else await new Promise((r) => setTimeout(r, 2000));
     }
 
+    console.log("✅ D-ID Video ready:", videoUrl);
     res.json({ firebase_video_url: videoUrl });
   } catch (err) {
-    if (err.response) {
-      console.error("❌ D-ID Error:", err.response.status, err.response.data);
-    } else {
-      console.error("❌ D-ID Error:", err.message);
-    }
+    console.error("❌ D-ID API Error:", err.response?.data || err.message);
     res.status(500).json({ error: "Video generation failed" });
   }
 });
 
-// ✅ Route: Save to professional DB
-// ✅ Route: Save to MongoDB (Dynamic collection by subject)
+// ✅ Update AI video + test data dynamically in PadmasiniDB
 app.post("/api/content/updateUnitAI", async (req, res) => {
   try {
     const { unitId, videoUrl, aiTestData } = req.body;
-    const client = await MongoClient.connect(MONGO_URI);
-    const db = client.db("PadmasiniDB");
+    if (!unitId) return res.status(400).json({ status: "error", message: "Missing unitId" });
 
-    const result = await db.collection("Content").updateOne(
+    const clientConn = await MongoClient.connect(MONGO_URI);
+    const dbConn = clientConn.db("PadmasiniDB");
+
+    const result = await dbConn.collection("Content").updateOne(
       { "units._id": new ObjectId(unitId) },
       {
         $set: {
-          "units.$.videoUrl": videoUrl,
-          "units.$.aiTestData": aiTestData,
+          "units.$.aiVideoUrl": videoUrl,
+          "units.$.aiTestData": aiTestData || [],
         },
       }
     );
 
     res.json({ status: "ok", updated: result.modifiedCount });
-    client.close();
+    clientConn.close();
   } catch (err) {
-    console.error("Error updating AI data:", err);
+    console.error("❌ MongoDB Update Error:", err);
     res.status(500).json({ status: "error", message: "Database update failed" });
   }
 });
 
-
+// ✅ Save full AI lesson dynamically
 app.put("/save-full-lesson-adminstyle/:unitId", async (req, res) => {
   try {
     const { unitId } = req.params;
     const updateData = req.body;
-    const db = client.db("professional"); // professional DB
-    const collection = db.collection("physics"); // change dynamically per subject if needed
+    const subjectName = (updateData.subjectName || "physics").toLowerCase();
 
-    const result = await collection.updateOne(
+    if (!collections[subjectName]) {
+      return res.status(400).json({ status: "error", message: "Invalid subject name" });
+    }
+
+    const result = await collections[subjectName].updateOne(
       { "units._id": unitId },
       {
         $set: {
+          "units.$.unitName": updateData.unitName,
           "units.$.explanation": updateData.explanation,
           "units.$.audioFileId": updateData.audioFileId || [],
           "units.$.imageUrls": updateData.imageUrls || [],
           "units.$.aiVideoUrl": updateData.aiVideoUrl || "",
-          "units.$.aiTestData": updateData.aiTestData || []
-        }
+          "units.$.aiTestData": updateData.aiTestData || [],
+        },
       }
     );
 
@@ -151,11 +147,8 @@ app.put("/save-full-lesson-adminstyle/:unitId", async (req, res) => {
   }
 });
 
-
-
-
-// ✅ Start Server
-const host = "0.0.0.0"; // Bind to all network interfaces
+// ✅ Start server
+const host = "0.0.0.0";
 app.listen(PORT, host, () => {
-  console.log(`✅ Server running at http://0.0.0.0:${PORT}`);
+  console.log(`✅ Server running on http://${host}:${PORT}`);
 });
