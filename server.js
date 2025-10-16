@@ -13,7 +13,7 @@ const PORT = process.env.PORT || 3000;
 // ✅ Middleware
 app.use(
   cors({
-    origin: "*", // or your Netlify/Render domain
+    origin: "https://majestic-frangollo-031fed.netlify.app",  // or your Netlify/Render domain
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
