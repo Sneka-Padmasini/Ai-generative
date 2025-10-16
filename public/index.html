@@ -61,7 +61,7 @@
       border-radius: 8px;
       border: 1px solid #81c784;
       font-size: 1rem;
-      background: #ffffff;
+      background: #fff;
       box-sizing: border-box;
     }
 
@@ -104,14 +104,6 @@
       width: 100%;
       border-radius: 12px;
       margin-top: 15px;
-    }
-
-    #quizDisplay {
-      background: #fffde7;
-      border-left: 6px solid #fbc02d;
-      padding: 15px;
-      border-radius: 8px;
-      display: none;
     }
 
     .two-column {
@@ -173,7 +165,7 @@
         <input type="text" id="questionInput" placeholder="Enter question..." />
         <input type="text" id="answerInput" placeholder="Enter answer..." />
       </div>
-      <button type="button" onclick="addQuestion()">➕ Add Question</button>
+      <button type="button" id="addQuestionBtn">➕ Add Question</button>
       <div id="questionsList">
         <h3>✅ Added Questions:</h3>
         <div id="addedQuestions"></div>
@@ -183,53 +175,62 @@
     <!-- Video Section -->
     <section>
       <h2>🎥 Lesson Video</h2>
-      <button type="button" onclick="generateVideo()">Generate Video</button>
+      <button type="button" id="generateVideoBtn">Generate Video</button>
       <video id="video" controls></video>
       <div id="loadingMessage" style="display:none;text-align:center;margin-top:20px;">
         <div class="spinner"></div>
         <p style="font-size:1.2rem;color:#555;margin-top:10px;">Generating your AI video, please wait...</p>
       </div>
-      <button type="button" onclick="saveFullLesson()">💾 Save Lesson</button>
+      <button type="button" id="saveLessonBtn">💾 Save Lesson</button>
     </section>
   </main>
 
   <script>
     document.addEventListener("DOMContentLoaded", () => {
       const urlParams = new URLSearchParams(window.location.search);
-      // const urlParams = new URLSearchParams(window.location.search);
-      const returnTo = urlParams.get("returnTo") || "/";
+
+      // get all dynamic fields
+      const returnTo = urlParams.get("returnTo") || "/adminright";
+      const parentId = urlParams.get("parentId") || "";
+      const rootUnitId = urlParams.get("rootUnitId") || "";
+      const dbname = urlParams.get("dbname") || "PadmasiniDB";
+      const subjectName = urlParams.get("subjectName") || "";
       const subtopic = urlParams.get("subtopic") || "";
       const description = decodeURIComponent(urlParams.get("description") || "");
-      const subject = urlParams.get("subjectName") || "Physics";
-      const editingUnitId = urlParams.get("unitId");
+      const openLessonId = urlParams.get("lessonId") || "";
+      const imageUrls = JSON.parse(urlParams.get("imageUrls") || "[]");
+      const audioFileId = JSON.parse(urlParams.get("audioFileId") || "[]");
 
+      // fill UI
       document.getElementById("subtopic").value = subtopic;
       document.getElementById("originalDescription").value = description;
 
-      let newAudio = [];
+      let aiVideoUrl = "";
       const questions = [];
 
-      // ➕ Add question
-      window.addQuestion = () => {
+      // add quiz
+      document.getElementById("addQuestionBtn").addEventListener("click", () => {
         const q = document.getElementById("questionInput").value.trim();
         const a = document.getElementById("answerInput").value.trim();
         if (!q || !a) return alert("Enter both question & answer");
+
         questions.push({ question: q, answer: a });
         document.getElementById("questionInput").value = "";
         document.getElementById("answerInput").value = "";
+
         const container = document.getElementById("addedQuestions");
         const div = document.createElement("div");
         div.className = "question-item";
         div.innerHTML = `<strong>Q${questions.length}:</strong> ${q}<br/><strong>A:</strong> ${a}`;
         container.appendChild(div);
-      };
+      });
 
-      // 🎥 Generate AI Video
-      // 🎥 Generate AI Video
-      window.generateVideo = async () => {
+      // generate AI video
+      document.getElementById("generateVideoBtn").addEventListener("click", async () => {
         const desc = document.getElementById("customDescription").value.trim() || description;
         const loading = document.getElementById("loadingMessage");
         const video = document.getElementById("video");
+
         loading.style.display = "block";
         video.style.display = "none";
 
@@ -239,67 +240,58 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ subtopic, description: desc }),
           });
-          const data = await res.json();
 
-          // ✅ Persist the generated URL globally and locally
-          newAudio = [data.firebase_video_url];
-          localStorage.setItem("generatedAIVideoUrl", data.firebase_video_url);
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "Video generation failed");
+
+          aiVideoUrl = data.firebase_video_url;
+          localStorage.setItem("generatedAIVideoUrl", aiVideoUrl);
 
           loading.style.display = "none";
           video.style.display = "block";
-          video.src = data.firebase_video_url;
+          video.src = aiVideoUrl;
         } catch (err) {
           console.error(err);
           loading.innerHTML = "<p style='color:red;'>❌ Failed to generate video.</p>";
         }
-      };
+      });
 
-
-      // 💾 Save AI Video + Quiz
-      window.saveFullLesson = async () => {
+      // save lesson
+      document.getElementById("saveLessonBtn").addEventListener("click", async () => {
         try {
-          const aiUrl =
-            (newAudio && newAudio.length > 0 && newAudio[0]) ||
-            localStorage.getItem("generatedAIVideoUrl") ||
-            "";
+          const aiVideoUrlToSave = aiVideoUrl || localStorage.getItem("generatedAIVideoUrl") || "";
+          const explanation = document.getElementById("customDescription").value.trim() || description;
 
+          // construct payload dynamically (same as handleAddSubtopic)
           const payload = {
-            explanation:
-              document.getElementById("customDescription").value.trim() || description,
-            audioFileId: newAudio,
-            imageUrls: [],
-            aiVideoUrl: aiUrl,
+            parentId,
+            rootUnitId,
+            dbname,
+            subjectName,
+            unitName: subtopic,
+            explanation,
+            imageUrls,
+            audioFileId,
+            aiVideoUrl: aiVideoUrlToSave,
             aiTestData: questions,
           };
 
-          const res = await fetch(
-            `https://ai-generative-rhk1.onrender.com/save-full-lesson-adminstyle/${editingUnitId}`,
-            {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(payload),
-            }
-          );
+          const saveResponse = await fetch("https://final-padmasini7.onrender.com/api/addSubtopic", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
 
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error || "Failed to save");
+          const saveData = await saveResponse.json();
+          if (!saveResponse.ok) throw new Error(saveData.error || "Failed to save lesson");
 
-          // ✅ Store for React page
-          if (aiUrl) localStorage.setItem("generatedAIVideoUrl", aiUrl);
-
-          alert("✅ AI Video and Quiz saved successfully!");
-
-          // ✅ Redirect back to admin page or selected lesson
-          const returnTo = urlParams.get("returnTo") || "/";
+          alert("✅ Lesson saved successfully!");
           window.location.href = returnTo;
-
         } catch (err) {
           console.error(err);
-          alert("❌ Error saving lesson. Check console.");
+          alert("❌ Error saving lesson. Check console for details.");
         }
-      };
-
-
+      });
     });
   </script>
 </body>
