@@ -13,15 +13,16 @@ const PORT = process.env.PORT || 3000;
 // ✅ Middleware
 app.use(
   cors({
-    origin: "https://majestic-frangollo-031fed.netlify.app",  // or your Netlify/Render domain
+    origin: "https://majestic-frangollo-031fed.netlify.app",
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true,
   })
 );
 app.options("*", cors());
 app.use(express.json());
 
-// ✅ Serve frontend (index.html etc.)
+// ✅ Serve frontend
 app.use(express.static(path.join(__dirname, "public")));
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
@@ -33,6 +34,7 @@ if (!MONGO_URI) {
   console.error("❌ Missing MONGO_URI in .env");
   process.exit(1);
 }
+
 const client = new MongoClient(MONGO_URI);
 let db;
 let collections = {};
@@ -47,40 +49,29 @@ client.connect().then(() => {
 // ✅ D-ID API key
 const DID_API_KEY = `Basic ${Buffer.from(process.env.DID_API_KEY).toString("base64")}`;
 
-// ✅ Generate AI video (D-ID)
+// ✅ Generate AI video
 app.post("/generate-and-upload", async (req, res) => {
   const { subtopic, description } = req.body;
-
-  if (!description || !subtopic) {
-    return res.status(400).json({ error: "Missing subtopic or description" });
-  }
+  if (!subtopic || !description) return res.status(400).json({ error: "Missing subtopic or description" });
 
   try {
     const didResponse = await axios.post(
       "https://api.d-id.com/talks",
-      {
-        script: { type: "text", input: description, subtitles: "false" },
-        presenter_id: "amy-jcwq6j4g",
-      },
+      { script: { type: "text", input: description, subtitles: "false" }, presenter_id: "amy-jcwq6j4g" },
       { headers: { Authorization: DID_API_KEY, "Content-Type": "application/json" } }
     );
 
     const talkId = didResponse.data.id;
-    console.log("🎬 D-ID Talk started:", talkId);
-
     let videoUrl = "";
     let status = "notDone";
 
     while (status !== "done") {
-      const poll = await axios.get(`https://api.d-id.com/talks/${talkId}`, {
-        headers: { Authorization: DID_API_KEY },
-      });
+      const poll = await axios.get(`https://api.d-id.com/talks/${talkId}`, { headers: { Authorization: DID_API_KEY } });
       status = poll.data.status;
       if (status === "done") videoUrl = poll.data.result_url;
       else await new Promise((r) => setTimeout(r, 2000));
     }
 
-    console.log("✅ D-ID Video ready:", videoUrl);
     res.json({ firebase_video_url: videoUrl });
   } catch (err) {
     console.error("❌ D-ID API Error:", err.response?.data || err.message);
@@ -88,27 +79,35 @@ app.post("/generate-and-upload", async (req, res) => {
   }
 });
 
-// ✅ Update AI video + test data dynamically in PadmasiniDB
+// ✅ Add Subtopic (new route)
+app.post("/api/addSubtopic", async (req, res) => {
+  try {
+    const payload = req.body;
+    if (!payload.unitName) return res.status(400).json({ error: "Missing unitName" });
+
+    const collection = db.collection("Content"); // adjust if needed
+    const result = await collection.insertOne(payload);
+
+    res.json({ status: "ok", insertedId: result.insertedId });
+  } catch (err) {
+    console.error("❌ /api/addSubtopic error:", err);
+    res.status(500).json({ error: "Failed to add subtopic" });
+  }
+});
+
+// ✅ Update AI video + test data
 app.post("/api/content/updateUnitAI", async (req, res) => {
   try {
     const { unitId, videoUrl, aiTestData } = req.body;
     if (!unitId) return res.status(400).json({ status: "error", message: "Missing unitId" });
 
-    const clientConn = await MongoClient.connect(MONGO_URI);
-    const dbConn = clientConn.db("PadmasiniDB");
-
+    const dbConn = client.db("PadmasiniDB");
     const result = await dbConn.collection("Content").updateOne(
       { "units._id": new ObjectId(unitId) },
-      {
-        $set: {
-          "units.$.aiVideoUrl": videoUrl,
-          "units.$.aiTestData": aiTestData || [],
-        },
-      }
+      { $set: { "units.$.aiVideoUrl": videoUrl, "units.$.aiTestData": aiTestData || [] } }
     );
 
     res.json({ status: "ok", updated: result.modifiedCount });
-    clientConn.close();
   } catch (err) {
     console.error("❌ MongoDB Update Error:", err);
     res.status(500).json({ status: "error", message: "Database update failed" });
@@ -122,9 +121,7 @@ app.put("/save-full-lesson-adminstyle/:unitId", async (req, res) => {
     const updateData = req.body;
     const subjectName = (updateData.subjectName || "physics").toLowerCase();
 
-    if (!collections[subjectName]) {
-      return res.status(400).json({ status: "error", message: "Invalid subject name" });
-    }
+    if (!collections[subjectName]) return res.status(400).json({ status: "error", message: "Invalid subject name" });
 
     const result = await collections[subjectName].updateOne(
       { "units._id": unitId },
@@ -148,7 +145,6 @@ app.put("/save-full-lesson-adminstyle/:unitId", async (req, res) => {
 });
 
 // ✅ Start server
-const host = "0.0.0.0";
-app.listen(PORT, host, () => {
-  console.log(`✅ Server running on http://${host}:${PORT}`);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`✅ Server running on http://0.0.0.0:${PORT}`);
 });
