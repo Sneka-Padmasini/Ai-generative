@@ -1,4 +1,4 @@
-// ✅ server.js — Full Dynamic AI Video + MongoDB + Frontend
+// ✅ server.js — Full Dynamic AI Video + MongoDB + Frontend + Proper CORS
 
 const express = require("express");
 const axios = require("axios");
@@ -10,16 +10,17 @@ require("dotenv").config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ✅ Middleware
-app.use(
-  cors({
-    origin: "https://majestic-frangollo-031fed.netlify.app",
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true,
-  })
-);
-app.options("*", cors());
+// ✅ CORS configuration
+const corsOptions = {
+  origin: "https://majestic-frangollo-031fed.netlify.app", // your frontend URL
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
+};
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions)); // handle preflight for all routes
+
+// ✅ JSON body parsing
 app.use(express.json());
 
 // ✅ Serve frontend
@@ -34,7 +35,6 @@ if (!MONGO_URI) {
   console.error("❌ Missing MONGO_URI in .env");
   process.exit(1);
 }
-
 const client = new MongoClient(MONGO_URI);
 let db;
 let collections = {};
@@ -49,7 +49,7 @@ client.connect().then(() => {
 // ✅ D-ID API key
 const DID_API_KEY = `Basic ${Buffer.from(process.env.DID_API_KEY).toString("base64")}`;
 
-// ✅ Generate AI video
+// ✅ Generate AI video (D-ID)
 app.post("/generate-and-upload", async (req, res) => {
   const { subtopic, description } = req.body;
   if (!subtopic || !description) return res.status(400).json({ error: "Missing subtopic or description" });
@@ -79,13 +79,13 @@ app.post("/generate-and-upload", async (req, res) => {
   }
 });
 
-// ✅ Add Subtopic (new route)
-app.post("/api/addSubtopic", async (req, res) => {
+// ✅ Add Subtopic (fixed route)
+app.post("/api/addSubtopic", cors(corsOptions), async (req, res) => {
   try {
     const payload = req.body;
     if (!payload.unitName) return res.status(400).json({ error: "Missing unitName" });
 
-    const collection = db.collection("Content"); // adjust if needed
+    const collection = db.collection("Content"); // adjust collection name if needed
     const result = await collection.insertOne(payload);
 
     res.json({ status: "ok", insertedId: result.insertedId });
@@ -95,8 +95,8 @@ app.post("/api/addSubtopic", async (req, res) => {
   }
 });
 
-// ✅ Update AI video + test data
-app.post("/api/content/updateUnitAI", async (req, res) => {
+// ✅ Update AI video + test data dynamically
+app.post("/api/content/updateUnitAI", cors(corsOptions), async (req, res) => {
   try {
     const { unitId, videoUrl, aiTestData } = req.body;
     if (!unitId) return res.status(400).json({ status: "error", message: "Missing unitId" });
@@ -115,7 +115,7 @@ app.post("/api/content/updateUnitAI", async (req, res) => {
 });
 
 // ✅ Save full AI lesson dynamically
-app.put("/save-full-lesson-adminstyle/:unitId", async (req, res) => {
+app.put("/save-full-lesson-adminstyle/:unitId", cors(corsOptions), async (req, res) => {
   try {
     const { unitId } = req.params;
     const updateData = req.body;
