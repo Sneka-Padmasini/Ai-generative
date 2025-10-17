@@ -145,69 +145,50 @@ app.post("/generate-and-upload", async (req, res) => {
   }
 });
 
-// ✅ Debug endpoint to check database structure
-// ✅ Debug endpoint - UPDATED FOR STRING IDS
+// ✅ Debug: Check specific subtopic
 app.get("/api/debug-subtopic/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { dbname = "professional" } = req.query;
 
-    console.log("🔍 Debugging subtopic:", id);
+    console.log("🔍 Node.js: Debugging subtopic:", id);
 
     const dbConn = client.db(dbname);
     const collection = dbConn.collection("Content");
 
-    const results = {};
+    // Find parent document containing this subtopic
+    const parentDoc = await collection.findOne({ "units._id": id });
 
-    // Query 1: Find by units._id as STRING (correct for your DB)
-    results.query1_string = await collection.findOne({ "units._id": id });
-    console.log("🔍 Query 1 (units._id as string):", results.query1_string ? "FOUND" : "NOT FOUND");
+    if (parentDoc) {
+      const foundUnit = parentDoc.units.find(unit => unit._id === id);
+      console.log("✅ Found subtopic:", foundUnit);
 
-    // Query 2: Try with ObjectId conversion (might fail)
-    try {
-      results.query2_objectId = await collection.findOne({ "units._id": new ObjectId(id) });
-      console.log("🔍 Query 2 (units._id as ObjectId):", results.query2_objectId ? "FOUND" : "NOT FOUND");
-    } catch (e) {
-      results.query2_error = "Cannot convert to ObjectId: " + e.message;
+      res.json({
+        found: true,
+        parentDocumentId: parentDoc._id,
+        subtopic: foundUnit,
+        parentDocument: parentDoc
+      });
+    } else {
+      console.log("❌ Subtopic not found");
+      res.json({
+        found: false,
+        message: "Subtopic not found in database"
+      });
     }
-
-    // Query 3: Find the parent document that contains this subtopic
-    results.parentDocument = await collection.findOne({
-      "units": {
-        $elemMatch: {
-          "_id": id
-        }
-      }
-    });
-
-    // Show what we found
-    if (results.parentDocument) {
-      console.log("✅ Found parent document:", results.parentDocument._id);
-      const foundUnit = results.parentDocument.units.find(unit => unit._id === id);
-      if (foundUnit) {
-        results.foundSubtopic = foundUnit;
-        console.log("✅ Found subtopic:", foundUnit.unitName);
-      }
-    }
-
-    res.json({
-      subtopicId: id,
-      database: dbname,
-      ...results
-    });
 
   } catch (err) {
     console.error("❌ Debug error:", err);
     res.status(500).json({ error: err.message });
   }
 });
-// ✅ Update Subtopic with AI Video URL - ENHANCED WITH BETTER DEBUGGING
-// ✅ Update Subtopic with AI Video URL - FIXED FOR STRING IDS
+
+// ✅ Update Subtopic with AI Video URL - USE STRING MATCHING
 app.put("/api/updateSubtopicVideo", async (req, res) => {
   try {
     const { subtopicId, aiVideoUrl, dbname = "professional" } = req.body;
 
-    console.log("🔄 Updating subtopic with AI video:", { subtopicId, aiVideoUrl, dbname });
+    console.log("🔄 Node.js: Updating subtopic with AI video:", { subtopicId, aiVideoUrl, dbname });
 
     if (!subtopicId || !aiVideoUrl) {
       return res.status(400).json({
@@ -218,14 +199,9 @@ app.put("/api/updateSubtopicVideo", async (req, res) => {
     const dbConn = client.db(dbname);
     const collection = dbConn.collection("Content");
 
-    let result;
-    let queryUsed = "";
-
-    // 🎯 CRITICAL FIX: Query using STRING ID (not ObjectId)
-    // Your database shows _id in units array is stored as String, not ObjectId
-    queryUsed = "Query: units._id with string (correct for your DB)";
-    result = await collection.updateOne(
-      { "units._id": subtopicId }, // Use string directly, no ObjectId conversion
+    // 🎯 CRITICAL: Use STRING matching (no ObjectId conversion)
+    const result = await collection.updateOne(
+      { "units._id": subtopicId }, // String to string matching
       {
         $set: {
           "units.$.aiVideoUrl": aiVideoUrl,
@@ -234,29 +210,26 @@ app.put("/api/updateSubtopicVideo", async (req, res) => {
       }
     );
 
-    console.log("🔍 Query result - Matched:", result.matchedCount, "Modified:", result.modifiedCount);
+    console.log("🔍 Node.js result - Matched:", result.matchedCount, "Modified:", result.modifiedCount);
 
     if (result.matchedCount === 0) {
-      console.log("❌ No documents matched with string query");
+      console.log("❌ No documents matched. The subtopic ID might not exist or format is wrong.");
       return res.status(404).json({
-        error: "Subtopic not found. Make sure the subtopic exists and the ID is correct.",
-        subtopicId: subtopicId,
-        suggestion: "The ID exists but might be in a different format. Check database structure."
+        error: "Subtopic not found. Please make sure the subtopic exists in the database.",
+        subtopicId: subtopicId
       });
     }
 
-    console.log("✅ AI video URL saved successfully!");
+    console.log("✅ Node.js: AI video URL saved successfully!");
 
     res.json({
       status: "ok",
       updated: result.modifiedCount,
-      matched: result.matchedCount,
-      queryUsed: queryUsed,
-      message: "AI video URL saved successfully"
+      message: "AI video URL saved successfully via Node.js"
     });
 
   } catch (err) {
-    console.error("❌ Error updating subtopic with AI video:", err);
+    console.error("❌ Node.js: Error updating subtopic:", err);
     res.status(500).json({ error: "Failed to update subtopic: " + err.message });
   }
 });
