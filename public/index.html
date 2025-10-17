@@ -274,7 +274,7 @@
         }
       });
 
-      // save lesson - SIMPLIFIED AND RELIABLE
+      // save lesson - SIMPLIFIED WITH KNOWN FIX
       document.getElementById("saveLessonBtn").addEventListener("click", async () => {
         try {
           const aiVideoUrlToSave = aiVideoUrl || localStorage.getItem("generatedAIVideoUrl") || "";
@@ -289,23 +289,14 @@
             return;
           }
 
-          console.log("💾 Saving AI video:", { parentId, aiVideoUrlToSave, dbname });
+          console.log("💾 Saving AI video to subtopic:", parentId);
 
-          // First, let's debug the database structure
-          console.log("🔍 Checking database structure...");
-          const debugResponse = await fetch(`https://ai-generative-rhk1.onrender.com/api/debug-subtopic/${parentId}?dbname=${dbname}`);
-
-          if (debugResponse.ok) {
-            const debugData = await debugResponse.json();
-            console.log("📊 Database debug info:", debugData);
-          }
-
-          // Now save the AI video
+          // Save the AI video using Node.js backend
           const saveResponse = await fetch("https://ai-generative-rhk1.onrender.com/api/updateSubtopicVideo", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              subtopicId: parentId,
+              subtopicId: parentId, // This is 68f1f92ba266a07d7bf1030b
               aiVideoUrl: aiVideoUrlToSave,
               dbname: dbname
             }),
@@ -325,12 +316,7 @@
 
         } catch (err) {
           console.error("❌ Error saving AI video:", err);
-
-          if (err.message.includes("not found")) {
-            alert("❌ Could not find the subtopic in the database. Please make sure:\n\n1. You clicked 'Add Subtopic' in the main app first\n2. The subtopic was successfully created\n3. Try going back and creating the subtopic again");
-          } else {
-            alert("❌ Error saving AI video: " + err.message);
-          }
+          alert("❌ Error saving AI video: " + err.message);
         }
       });
 
