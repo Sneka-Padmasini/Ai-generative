@@ -195,7 +195,7 @@
       const returnTo = urlParams.get("returnTo") || "/adminright";
       const parentId = urlParams.get("parentId") || "";
       const rootUnitId = urlParams.get("rootUnitId") || "";
-      const dbname = urlParams.get("dbname") || "professional"; // Changed to professional
+      const dbname = urlParams.get("dbname") || "professional";
       const subjectName = urlParams.get("subjectName") || "";
       const subtopic = urlParams.get("subtopic") || "";
       const description = decodeURIComponent(urlParams.get("description") || "");
@@ -226,7 +226,7 @@
         container.appendChild(div);
       });
 
-      // generate AI video - CALL YOUR NODE.JS BACKEND
+      // generate AI video
       document.getElementById("generateVideoBtn").addEventListener("click", async () => {
         const desc = document.getElementById("customDescription").value.trim() || description;
         const loading = document.getElementById("loadingMessage");
@@ -243,7 +243,6 @@
         try {
           console.log("🎬 Generating AI video for:", subtopic);
 
-          // ✅ Call YOUR Node.js backend
           const res = await fetch("https://ai-generative-rhk1.onrender.com/generate-and-upload", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -275,32 +274,7 @@
         }
       });
 
-      // Test CORS first
-      async function testCORS() {
-        try {
-          console.log("🧪 Testing CORS connection to Spring Boot...");
-          const testResponse = await fetch("https://final-padmasini7.onrender.com/api/test-cors", {
-            method: "GET",
-            headers: {
-              "Content-Type": "application/json"
-            }
-          });
-
-          if (testResponse.ok) {
-            const testData = await testResponse.json();
-            console.log("✅ CORS test successful:", testData);
-            return true;
-          } else {
-            console.error("❌ CORS test failed:", testResponse.status);
-            return false;
-          }
-        } catch (error) {
-          console.error("❌ CORS test error:", error);
-          return false;
-        }
-      }
-
-      // save lesson - WITH CORS TESTING
+      // save lesson - SIMPLIFIED AND RELIABLE
       document.getElementById("saveLessonBtn").addEventListener("click", async () => {
         try {
           const aiVideoUrlToSave = aiVideoUrl || localStorage.getItem("generatedAIVideoUrl") || "";
@@ -315,23 +289,21 @@
             return;
           }
 
-          console.log("💾 Starting save process...");
+          console.log("💾 Saving AI video:", { parentId, aiVideoUrlToSave, dbname });
 
-          // Test CORS first
-          const corsWorking = await testCORS();
-          if (!corsWorking) {
-            console.warn("⚠️ CORS test failed, using Node.js backend");
-            await saveWithNodeJS(parentId, aiVideoUrlToSave, dbname);
-            return;
+          // First, let's debug the database structure
+          console.log("🔍 Checking database structure...");
+          const debugResponse = await fetch(`https://ai-generative-rhk1.onrender.com/api/debug-subtopic/${parentId}?dbname=${dbname}`);
+
+          if (debugResponse.ok) {
+            const debugData = await debugResponse.json();
+            console.log("📊 Database debug info:", debugData);
           }
 
-          // Try Spring Boot backend
-          console.log("🔄 Attempting to save with Spring Boot backend...");
-          const updateResponse = await fetch("https://final-padmasini7.onrender.com/api/updateSubtopicVideo", {
+          // Now save the AI video
+          const saveResponse = await fetch("https://ai-generative-rhk1.onrender.com/api/updateSubtopicVideo", {
             method: "PUT",
-            headers: {
-              "Content-Type": "application/json"
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               subtopicId: parentId,
               aiVideoUrl: aiVideoUrlToSave,
@@ -339,66 +311,37 @@
             }),
           });
 
-          console.log("📡 Spring Boot response status:", updateResponse.status);
+          const saveData = await saveResponse.json();
 
-          if (updateResponse.ok) {
-            const updateData = await updateResponse.json();
-            console.log("✅ Spring Boot save successful:", updateData);
-
-            if (updateData.updated === 0) {
-              console.warn("⚠️ Spring Boot: No documents updated, trying Node.js...");
-              await saveWithNodeJS(parentId, aiVideoUrlToSave, dbname);
-            } else {
-              completeSave();
-            }
-          } else {
-            console.warn("⚠️ Spring Boot save failed, trying Node.js...");
-            await saveWithNodeJS(parentId, aiVideoUrlToSave, dbname);
+          if (!saveResponse.ok) {
+            throw new Error(saveData.error || "Failed to save AI video");
           }
 
+          console.log("✅ Save successful:", saveData);
+
+          localStorage.removeItem("generatedAIVideoUrl");
+          alert("✅ AI Video saved successfully to your subtopic!");
+          window.location.href = returnTo;
+
         } catch (err) {
-          console.error("❌ Error in save process:", err);
-          alert("❌ Error saving AI video: " + err.message);
+          console.error("❌ Error saving AI video:", err);
+
+          if (err.message.includes("not found")) {
+            alert("❌ Could not find the subtopic in the database. Please make sure:\n\n1. You clicked 'Add Subtopic' in the main app first\n2. The subtopic was successfully created\n3. Try going back and creating the subtopic again");
+          } else {
+            alert("❌ Error saving AI video: " + err.message);
+          }
         }
       });
 
-      // Node.js fallback function
-      async function saveWithNodeJS(subtopicId, videoUrl, database) {
-        try {
-          console.log("🔄 Using Node.js backend as fallback...");
-          const response = await fetch("https://ai-generative-rhk1.onrender.com/api/updateSubtopicVideo", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              subtopicId: subtopicId,
-              aiVideoUrl: videoUrl,
-              dbname: database
-            }),
-          });
-
-          const data = await response.json();
-
-          if (!response.ok) {
-            throw new Error(data.error || "Node.js backend also failed");
-          }
-
-          console.log("✅ Node.js save successful:", data);
-          completeSave();
-
-        } catch (error) {
-          console.error("❌ Node.js fallback also failed:", error);
-          throw new Error("All save attempts failed: " + error.message);
-        }
-      }
-
-      // Common completion function
-      function completeSave() {
-        localStorage.removeItem("generatedAIVideoUrl");
-        alert("✅ AI Video saved successfully to your subtopic!");
-        window.location.href = returnTo;
-      }
+      // Test connection on page load
+      console.log("🧪 Testing Node.js backend connection...");
+      fetch("https://ai-generative-rhk1.onrender.com/api/test")
+        .then(response => response.json())
+        .then(data => console.log("✅ Node.js backend is accessible:", data))
+        .catch(error => console.error("❌ Node.js backend not accessible:", error));
     });
-  </script>>
+  </script>
 </body>
 
 </html>
