@@ -49,13 +49,11 @@ if (!MONGO_URI) {
 }
 
 const client = new MongoClient(MONGO_URI);
-let db;
 
 async function connectDB() {
   try {
     await client.connect();
-    db = client.db("professional");
-    console.log("✅ Connected to MongoDB Professional DB");
+    console.log("✅ Connected to MongoDB");
   } catch (err) {
     console.error("❌ MongoDB connection error:", err);
     process.exit(1);
@@ -63,6 +61,11 @@ async function connectDB() {
 }
 
 connectDB();
+
+// ✅ Helper function to get database connection
+function getDB(dbname = "professional") {
+  return client.db(dbname);
+}
 
 // ✅ D-ID API key
 if (!process.env.DID_API_KEY) {
@@ -73,19 +76,15 @@ const DID_API_KEY = `Basic ${Buffer.from(process.env.DID_API_KEY).toString("base
 
 // ✅ Generate AI video (D-ID) with validation
 app.post("/generate-and-upload", async (req, res) => {
-  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-  const { subtopic, description } = req.body;
-
-  if (!subtopic || !description || description.trim().length < 3) {
-    return res.status(400).json({
-      error: "Description must be at least 3 characters for AI video generation."
-    });
-  }
-
   try {
+    const { subtopic, description } = req.body;
+
+    if (!subtopic || !description || description.trim().length < 3) {
+      return res.status(400).json({
+        error: "Description must be at least 3 characters for AI video generation."
+      });
+    }
+
     console.log("🎬 Starting AI video generation for:", subtopic);
 
     const didResponse = await axios.post(
@@ -145,15 +144,65 @@ app.post("/generate-and-upload", async (req, res) => {
   }
 });
 
+// ✅ Debug: Check ALL documents and subtopics (MISSING FROM YOUR CODE)
+app.get("/api/debug-all-subtopics", async (req, res) => {
+  try {
+    const { dbname = "professional" } = req.query;
+
+    console.log("🔍 Checking ALL documents in database:", dbname);
+
+    const dbConn = getDB(dbname);
+    const collection = dbConn.collection("Content");
+
+    // Get all documents
+    const allDocuments = await collection.find({}).toArray();
+
+    console.log("📊 Found", allDocuments.length, "documents in database");
+
+    // Extract ALL subtopic IDs from ALL documents
+    const allSubtopicIds = [];
+
+    allDocuments.forEach(doc => {
+      console.log(`📄 Document: ${doc._id} - ${doc.unitName}`);
+
+      if (doc.units && Array.isArray(doc.units)) {
+        doc.units.forEach(unit => {
+          if (unit._id) {
+            allSubtopicIds.push({
+              parentDocumentId: doc._id,
+              parentDocumentName: doc.unitName,
+              subtopicId: unit._id,
+              subtopicName: unit.unitName || 'No name',
+              hasAiVideoUrl: !!unit.aiVideoUrl,
+              explanation: unit.explanation || 'No description'
+            });
+          }
+        });
+      }
+    });
+
+    res.json({
+      totalDocuments: allDocuments.length,
+      totalSubtopics: allSubtopicIds.length,
+      allSubtopicIds: allSubtopicIds,
+      recentDocuments: allDocuments.slice(0, 3)
+    });
+
+  } catch (err) {
+    console.error("❌ Debug all documents error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ✅ Debug: Check specific subtopic
 app.get("/api/debug-subtopic/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { dbname = "professional" } = req.query;
 
-    console.log("🔍 Node.js: Debugging subtopic:", id);
+    console.log("🔍 Debugging subtopic:", id);
 
-    const dbConn = client.db(dbname);
+    const dbConn = getDB(dbname);
     const collection = dbConn.collection("Content");
 
     // Find parent document containing this subtopic
@@ -196,7 +245,7 @@ app.put("/api/updateSubtopicVideo", async (req, res) => {
       });
     }
 
-    const dbConn = client.db(dbname);
+    const dbConn = getDB(dbname);
     const collection = dbConn.collection("Content");
 
     // 🎯 CRITICAL: Use STRING matching (no ObjectId conversion)
@@ -213,7 +262,7 @@ app.put("/api/updateSubtopicVideo", async (req, res) => {
     console.log("🔍 Node.js result - Matched:", result.matchedCount, "Modified:", result.modifiedCount);
 
     if (result.matchedCount === 0) {
-      console.log("❌ No documents matched. The subtopic ID might not exist or format is wrong.");
+      console.log("❌ No documents matched.");
       return res.status(404).json({
         error: "Subtopic not found. Please make sure the subtopic exists in the database.",
         subtopicId: subtopicId
@@ -244,7 +293,7 @@ app.post("/api/addSubtopic", async (req, res) => {
       return res.status(400).json({ error: "Missing unitName" });
     }
 
-    const dbConn = client.db(payload.dbname || "professional");
+    const dbConn = getDB(payload.dbname || "professional");
     const collection = dbConn.collection("Content");
 
     const documentToInsert = {
