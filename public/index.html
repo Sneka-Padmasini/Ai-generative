@@ -299,7 +299,7 @@
         }
       });
 
-      // save lesson - USE THE CORRECT SUBTOPIC ID
+      // In your AI video page JavaScript, update the save function:
       document.getElementById("saveLessonBtn").addEventListener("click", async () => {
         try {
           const aiVideoUrlToSave = aiVideoUrl || localStorage.getItem("generatedAIVideoUrl") || "";
@@ -315,33 +315,22 @@
           }
 
           console.log("💾 Saving AI video with parameters:", {
-            subtopicId: subtopicId,      // The nested unit ID
-            parentId: parentId,          // The main unit ID
+            subtopicId: subtopicId,
+            parentId: parentId,
             aiVideoUrl: aiVideoUrlToSave,
-            dbname: dbname
+            dbname: dbname,
+            subjectName: subjectName // Make sure this is passed from React
           });
 
-          // First, verify the subtopic exists
-          const debugResponse = await fetch(`https://ai-generative-rhk1.onrender.com/api/debug-subtopic/${subtopicId}?dbname=${dbname}`);
-
-          if (debugResponse.ok) {
-            const debugData = await debugResponse.json();
-            console.log("📊 Debug result:", debugData);
-
-            if (!debugData.found) {
-              alert(`❌ Error: Subtopic ID ${subtopicId} not found in database.\n\nParent ID: ${parentId}\n\nPlease make sure the subtopic was saved correctly.`);
-              return;
-            }
-          }
-
-          // Save the AI video URL using the SUBTOPIC ID
-          const saveResponse = await fetch("https://ai-generative-rhk1.onrender.com/api/updateSubtopicVideo", {
+          // Save the AI video URL using Spring Boot
+          const saveResponse = await fetch("http://localhost:8080/api/updateSubtopicVideo", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              subtopicId: subtopicId,  // This is the nested subtopic ID
+              subtopicId: subtopicId,
               aiVideoUrl: aiVideoUrlToSave,
-              dbname: dbname
+              dbname: dbname,
+              subjectName: subjectName // ✅ CRITICAL: Add subjectName
             }),
           });
 
