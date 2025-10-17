@@ -289,6 +289,7 @@
       });
 
       // save lesson - UPDATE EXISTING SUBTOPIC WITH AI VIDEO
+      // save lesson - UPDATE EXISTING SUBTOPIC WITH AI VIDEO (WITH CORS FIX)
       document.getElementById("saveLessonBtn").addEventListener("click", async () => {
         try {
           const aiVideoUrlToSave = aiVideoUrl || localStorage.getItem("generatedAIVideoUrl") || "";
@@ -310,10 +311,14 @@
           });
 
           // Update the existing subtopic with AI video URL
-          // This should call your Spring Boot backend
+          // Using mode: 'cors' and proper error handling
           const updateResponse = await fetch("https://final-padmasini7.onrender.com/api/updateSubtopicVideo", {
             method: "PUT",
-            headers: { "Content-Type": "application/json" },
+            mode: 'cors', // Explicitly set CORS mode
+            headers: {
+              "Content-Type": "application/json",
+              "Accept": "application/json"
+            },
             body: JSON.stringify({
               subtopicId: parentId,
               aiVideoUrl: aiVideoUrlToSave,
@@ -321,9 +326,23 @@
             }),
           });
 
+          // Check if response is ok
           if (!updateResponse.ok) {
-            const errorText = await updateResponse.text();
-            throw new Error(errorText || "Failed to update subtopic with AI video");
+            // Try to get error message as text first, then as JSON
+            let errorMessage = "Failed to update subtopic with AI video";
+            try {
+              const errorText = await updateResponse.text();
+              errorMessage = errorText || errorMessage;
+            } catch (e) {
+              // If text parsing fails, try JSON
+              try {
+                const errorData = await updateResponse.json();
+                errorMessage = errorData.error || errorMessage;
+              } catch (jsonError) {
+                errorMessage = `HTTP ${updateResponse.status}: ${updateResponse.statusText}`;
+              }
+            }
+            throw new Error(errorMessage);
           }
 
           const updateData = await updateResponse.json();
