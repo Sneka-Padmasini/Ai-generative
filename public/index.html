@@ -197,7 +197,6 @@
       const subjectName = urlParams.get("subjectName") || "";
       const subtopic = urlParams.get("subtopic") || "";
       const description = decodeURIComponent(urlParams.get("description") || "");
-      const openLessonId = urlParams.get("lessonId") || "";
       const imageUrls = JSON.parse(urlParams.get("imageUrls") || "[]");
       const audioFileId = JSON.parse(urlParams.get("audioFileId") || "[]");
 
@@ -231,11 +230,18 @@
         const loading = document.getElementById("loadingMessage");
         const video = document.getElementById("video");
 
+        if (!desc.trim()) {
+          alert("Please enter a description for the AI video");
+          return;
+        }
+
         loading.style.display = "block";
         video.style.display = "none";
 
         try {
-          const res = await fetch("https://ai-generative-rhk1.onrender.com/generate-and-upload", {
+          console.log("🎬 Generating AI video for:", subtopic);
+
+          const res = await fetch("https://final-padmasini7.onrender.com/generate-and-upload", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ subtopic, description: desc }),
@@ -245,51 +251,63 @@
           if (!res.ok) throw new Error(data.error || "Video generation failed");
 
           aiVideoUrl = data.firebase_video_url;
+          console.log("✅ AI Video URL received:", aiVideoUrl);
+
+          // Store in localStorage for main app
           localStorage.setItem("generatedAIVideoUrl", aiVideoUrl);
 
           loading.style.display = "none";
           video.style.display = "block";
           video.src = aiVideoUrl;
+
+          alert("✅ AI Video generated successfully!");
         } catch (err) {
-          console.error(err);
-          loading.innerHTML = "<p style='color:red;'>❌ Failed to generate video.</p>";
+          console.error("❌ AI Video generation error:", err);
+          loading.innerHTML = "<p style='color:red;'>❌ Failed to generate video: " + err.message + "</p>";
         }
       });
 
-      // save lesson
+      // save lesson - UPDATE EXISTING SUBTOPIC WITH AI VIDEO
       document.getElementById("saveLessonBtn").addEventListener("click", async () => {
         try {
           const aiVideoUrlToSave = aiVideoUrl || localStorage.getItem("generatedAIVideoUrl") || "";
-          const explanation = document.getElementById("customDescription").value.trim() || description;
 
-          // construct payload dynamically (same as handleAddSubtopic)
-          const payload = {
-            parentId,
-            rootUnitId,
-            dbname,
-            subjectName,
-            unitName: subtopic,
-            explanation,
-            imageUrls,
-            audioFileId,
-            aiVideoUrl: aiVideoUrlToSave,
-            aiTestData: questions,
-          };
+          if (!aiVideoUrlToSave) {
+            alert("Please generate an AI video first before saving");
+            return;
+          }
 
-          const saveResponse = await fetch("https://final-padmasini7.onrender.com/api/addSubtopic", {
-            method: "POST",
+          if (!parentId) {
+            alert("Error: Cannot find subtopic ID to update");
+            return;
+          }
+
+          console.log("💾 Saving AI video to subtopic:", parentId, aiVideoUrlToSave);
+
+          // Update the existing subtopic with AI video URL
+          const updateResponse = await fetch("https://final-padmasini7.onrender.com/api/updateSubtopicVideo", {
+            method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
+            body: JSON.stringify({
+              subtopicId: parentId,
+              aiVideoUrl: aiVideoUrlToSave,
+              dbname: dbname
+            }),
           });
 
-          const saveData = await saveResponse.json();
-          if (!saveResponse.ok) throw new Error(saveData.error || "Failed to save lesson");
+          const updateData = await updateResponse.json();
+          if (!updateResponse.ok) throw new Error(updateData.error || "Failed to update subtopic with AI video");
 
-          alert("✅ Lesson saved successfully!");
+          console.log("✅ AI video saved to database:", updateData);
+
+          // Clean up
+          localStorage.removeItem("generatedAIVideoUrl");
+
+          alert("✅ AI Video saved successfully to your subtopic!");
           window.location.href = returnTo;
         } catch (err) {
-          console.error(err);
-          alert("❌ Error saving lesson. Check console for details.");
+          console.error("❌ Error saving AI video:", err);
+          alert("❌ Error saving AI video: " + err.message);
         }
       });
     });
