@@ -10,10 +10,11 @@ const PORT = process.env.PORT || 3000;
 
 // ✅ Enhanced CORS configuration
 const allowedOrigins = [
-  "https://majestic-frangollo-031fed.netlify.app",
+  "https://majestic-frangollo-031fed.netlify.app", // Your AI page
   "http://localhost:5173",
   "http://localhost:5174",
-  "https://ai-generative-rhk1.onrender.com",
+  "https://padmasini7-frontend.netlify.app", // Add your main app domain
+  "https://ai-generative-rhk1.onrender.com", // Your own domain
 ];
 
 app.use(cors({
@@ -22,9 +23,11 @@ app.use(cors({
     if (!origin) return callback(null, true);
 
     if (allowedOrigins.indexOf(origin) === -1) {
+      console.log('🔒 CORS blocked origin:', origin);
       const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
       return callback(new Error(msg), false);
     }
+    console.log('✅ CORS allowed origin:', origin);
     return callback(null, true);
   },
   credentials: true,
