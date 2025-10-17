@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AI Teaching Assistant</title>
   <style>
+    /* Your existing CSS styles */
     body {
       font-family: 'Segoe UI', sans-serif;
       background: #f9fafb;
@@ -224,7 +225,7 @@
         container.appendChild(div);
       });
 
-      // generate AI video - CALL YOUR SPRING BOOT BACKEND
+      // generate AI video - CALL YOUR NODE.JS BACKEND
       document.getElementById("generateVideoBtn").addEventListener("click", async () => {
         const desc = document.getElementById("customDescription").value.trim() || description;
         const loading = document.getElementById("loadingMessage");
@@ -240,24 +241,33 @@
 
         try {
           console.log("🎬 Generating AI video for:", subtopic);
+          console.log("📝 Using description:", desc);
 
-          // ✅ Call your Spring Boot backend
-          const res = await fetch("https://final-padmasini7.onrender.com/generate-and-upload", {
+          // ✅ Call YOUR Node.js backend at ai-generative-rhk1.onrender.com
+          const res = await fetch("https://ai-generative-rhk1.onrender.com/generate-and-upload", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({ subtopic, description: desc }),
+            body: JSON.stringify({
+              subtopic: subtopic,
+              description: desc
+            }),
           });
 
+          console.log("📡 Response status:", res.status);
+
           if (!res.ok) {
-            const errorText = await res.text();
-            throw new Error(errorText || "Video generation failed");
+            const errorData = await res.json();
+            console.error("❌ Server error response:", errorData);
+            throw new Error(errorData.error || `Video generation failed with status ${res.status}`);
           }
 
           const data = await res.json();
-          aiVideoUrl = data.firebase_video_url || data.videoUrl;
-          console.log("✅ AI Video URL received:", aiVideoUrl);
+          console.log("✅ Server response:", data);
+
+          aiVideoUrl = data.firebase_video_url;
+          console.log("🎥 AI Video URL received:", aiVideoUrl);
 
           if (!aiVideoUrl) {
             throw new Error("No video URL returned from server");
@@ -273,7 +283,8 @@
           alert("✅ AI Video generated successfully!");
         } catch (err) {
           console.error("❌ AI Video generation error:", err);
-          loading.innerHTML = "<p style='color:red;'>❌ Failed to generate video: " + err.message + "</p>";
+          loading.style.display = "none";
+          alert("❌ Failed to generate video: " + err.message);
         }
       });
 
@@ -292,9 +303,14 @@
             return;
           }
 
-          console.log("💾 Saving AI video to subtopic:", parentId, aiVideoUrlToSave);
+          console.log("💾 Saving AI video to subtopic:", {
+            subtopicId: parentId,
+            aiVideoUrl: aiVideoUrlToSave,
+            dbname: dbname
+          });
 
-          // Update the existing subtopic with AI video URL - CALL SPRING BOOT
+          // Update the existing subtopic with AI video URL
+          // This should call your Spring Boot backend
           const updateResponse = await fetch("https://final-padmasini7.onrender.com/api/updateSubtopicVideo", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
