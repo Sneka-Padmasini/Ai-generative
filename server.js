@@ -8,12 +8,13 @@ require("dotenv").config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ✅ CORS configuration
+// ✅ CORS configuration - ADDED AI PAGE DOMAIN
 const corsOptions = {
   origin: [
     "https://majestic-frangollo-031fed.netlify.app",
     "http://localhost:5173",
     "http://localhost:5174",
+    "https://ai-generative-rhk1.onrender.com", // Add this line for AI page
   ],
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
