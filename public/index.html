@@ -226,7 +226,7 @@
         container.appendChild(div);
       });
 
-      // generate AI video
+      // generate AI video - CALL NODE.JS BACKEND
       document.getElementById("generateVideoBtn").addEventListener("click", async () => {
         const desc = document.getElementById("customDescription").value.trim() || description;
         const loading = document.getElementById("loadingMessage");
@@ -243,6 +243,7 @@
         try {
           console.log("🎬 Generating AI video for:", subtopic);
 
+          // ✅ Call Node.js backend for AI video generation
           const res = await fetch("https://ai-generative-rhk1.onrender.com/generate-and-upload", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -274,7 +275,7 @@
         }
       });
 
-      // save lesson - SIMPLIFIED WITH KNOWN FIX
+      // save lesson - USE NODE.JS BACKEND FOR SAVING
       document.getElementById("saveLessonBtn").addEventListener("click", async () => {
         try {
           const aiVideoUrlToSave = aiVideoUrl || localStorage.getItem("generatedAIVideoUrl") || "";
@@ -289,14 +290,32 @@
             return;
           }
 
-          console.log("💾 Saving AI video to subtopic:", parentId);
+          console.log("💾 Saving AI video via Node.js backend:", {
+            subtopicId: parentId,
+            aiVideoUrl: aiVideoUrlToSave,
+            dbname: dbname
+          });
 
-          // Save the AI video using Node.js backend
+          // First, debug to see if subtopic exists
+          console.log("🔍 Checking if subtopic exists...");
+          const debugResponse = await fetch(`https://ai-generative-rhk1.onrender.com/api/debug-subtopic/${parentId}?dbname=${dbname}`);
+
+          if (debugResponse.ok) {
+            const debugData = await debugResponse.json();
+            console.log("📊 Debug result:", debugData);
+
+            if (!debugData.found) {
+              alert("❌ Error: Subtopic not found in database. Please make sure you clicked 'Add Subtopic' in the main app first.");
+              return;
+            }
+          }
+
+          // Save the AI video URL
           const saveResponse = await fetch("https://ai-generative-rhk1.onrender.com/api/updateSubtopicVideo", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              subtopicId: parentId, // This is 68f1f92ba266a07d7bf1030b
+              subtopicId: parentId,
               aiVideoUrl: aiVideoUrlToSave,
               dbname: dbname
             }),
@@ -322,10 +341,10 @@
 
       // Test connection on page load
       console.log("🧪 Testing Node.js backend connection...");
-      fetch("https://ai-generative-rhk1.onrender.com/api/test")
+      fetch("https://ai-generative-rhk1.onrender.com/api/debug-subtopic/68f1fc85a266a07d7bf1037f?dbname=professional")
         .then(response => response.json())
-        .then(data => console.log("✅ Node.js backend is accessible:", data))
-        .catch(error => console.error("❌ Node.js backend not accessible:", error));
+        .then(data => console.log("✅ Node.js debug test:", data))
+        .catch(error => console.error("❌ Node.js debug test failed:", error));
     });
   </script>
 </body>
