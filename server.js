@@ -1,5 +1,3 @@
-// ✅ server.js — Full Dynamic AI Video + MongoDB + Frontend + Proper CORS + Validation
-
 const express = require("express");
 const axios = require("axios");
 const cors = require("cors");
@@ -41,13 +39,10 @@ if (!MONGO_URI) {
 }
 const client = new MongoClient(MONGO_URI);
 let db;
-let collections = {};
 
 client.connect()
   .then(() => {
     db = client.db("professional");
-    const subjects = ["Botany", "Chemistry", "General", "Maths", "Physics", "Zoology"];
-    subjects.forEach((s) => (collections[s.toLowerCase()] = db.collection(s.toLowerCase())));
     console.log("✅ Connected to MongoDB Professional DB");
   })
   .catch(err => {
@@ -72,6 +67,8 @@ app.post("/generate-and-upload", async (req, res) => {
   }
 
   try {
+    console.log("🎬 Starting AI video generation for:", subtopic);
+
     // Start video generation
     const didResponse = await axios.post(
       "https://api.d-id.com/talks",
@@ -89,6 +86,8 @@ app.post("/generate-and-upload", async (req, res) => {
     let videoUrl = "";
     let status = "notDone";
 
+    console.log("⏳ Polling for video status, talkId:", talkId);
+
     // Poll until video is ready
     while (status !== "done") {
       const poll = await axios.get(`https://api.d-id.com/talks/${talkId}`, {
@@ -97,8 +96,11 @@ app.post("/generate-and-upload", async (req, res) => {
       });
 
       status = poll.data.status;
+      console.log("📊 Video status:", status);
+
       if (status === "done") {
         videoUrl = poll.data.result_url;
+        console.log("✅ D-ID Video ready:", videoUrl);
       } else if (status === "failed") {
         throw new Error("D-ID video generation failed");
       } else {
@@ -106,82 +108,116 @@ app.post("/generate-and-upload", async (req, res) => {
       }
     }
 
-    console.log("✅ D-ID Video ready:", videoUrl);
-    res.json({ firebase_video_url: videoUrl });
+    res.json({
+      firebase_video_url: videoUrl,
+      message: "AI video generated successfully"
+    });
   } catch (err) {
     console.error("❌ D-ID API Error:", err.response?.data || err.message || err);
     res.status(500).json({
-      error:
-        err.response?.data?.details ||
-        err.response?.data?.error ||
-        err.message ||
-        "Video generation failed"
+      error: err.response?.data?.details || err.response?.data?.error || err.message || "Video generation failed"
     });
   }
 });
 
-// ✅ Add Subtopic
+// ✅ Add Subtopic - Save initial subtopic data
 app.post("/api/addSubtopic", async (req, res) => {
   try {
     const payload = req.body;
-    if (!payload.unitName) return res.status(400).json({ error: "Missing unitName" });
+    console.log("📥 Received subtopic payload:", payload);
 
-    const collection = db.collection("Content");
-    const result = await collection.insertOne(payload);
+    if (!payload.unitName) {
+      return res.status(400).json({ error: "Missing unitName" });
+    }
 
-    res.json({ status: "ok", insertedId: result.insertedId });
+    // Use the correct database
+    const dbConn = client.db(payload.dbname || "PadmasiniDB");
+    const collection = dbConn.collection("Content");
+
+    // Add timestamp
+    const documentToInsert = {
+      ...payload,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    console.log("💾 Inserting subtopic document");
+
+    const result = await collection.insertOne(documentToInsert);
+
+    console.log("✅ Subtopic inserted successfully, ID:", result.insertedId);
+
+    res.json({
+      status: "ok",
+      insertedId: result.insertedId,
+      insertedSubId: result.insertedId.toString()
+    });
   } catch (err) {
     console.error("❌ /api/addSubtopic error:", err);
-    res.status(500).json({ error: "Failed to add subtopic" });
+    res.status(500).json({ error: "Failed to add subtopic: " + err.message });
   }
 });
 
-// ✅ Update AI video + test data dynamically
-app.post("/api/content/updateUnitAI", async (req, res) => {
+// ✅ Update Subtopic with AI Video URL
+app.put("/api/updateSubtopicVideo", async (req, res) => {
   try {
-    const { unitId, videoUrl, aiTestData } = req.body;
-    if (!unitId) return res.status(400).json({ status: "error", message: "Missing unitId" });
+    const { subtopicId, aiVideoUrl, dbname = "PadmasiniDB" } = req.body;
 
-    const dbConn = client.db("PadmasiniDB");
-    const result = await dbConn.collection("Content").updateOne(
-      { "units._id": new ObjectId(unitId) },
-      { $set: { "units.$.aiVideoUrl": videoUrl, "units.$.aiTestData": aiTestData || [] } }
-    );
+    console.log("🔄 Updating subtopic with AI video:", { subtopicId, aiVideoUrl });
 
-    res.json({ status: "ok", updated: result.modifiedCount });
-  } catch (err) {
-    console.error("❌ MongoDB Update Error:", err);
-    res.status(500).json({ status: "error", message: "Database update failed" });
-  }
-});
+    if (!subtopicId || !aiVideoUrl) {
+      return res.status(400).json({
+        error: "Missing subtopicId or aiVideoUrl"
+      });
+    }
 
-// ✅ Save full AI lesson dynamically
-app.put("/save-full-lesson-adminstyle/:unitId", async (req, res) => {
-  try {
-    const { unitId } = req.params;
-    const updateData = req.body;
-    const subjectName = (updateData.subjectName || "physics").toLowerCase();
+    const dbConn = client.db(dbname);
+    const collection = dbConn.collection("Content");
 
-    if (!collections[subjectName]) return res.status(400).json({ status: "error", message: "Invalid subject name" });
-
-    const result = await collections[subjectName].updateOne(
-      { "units._id": unitId },
+    const result = await collection.updateOne(
+      { _id: new ObjectId(subtopicId) },
       {
         $set: {
-          "units.$.unitName": updateData.unitName,
-          "units.$.explanation": updateData.explanation,
-          "units.$.audioFileId": updateData.audioFileId || [],
-          "units.$.imageUrls": updateData.imageUrls || [],
-          "units.$.aiVideoUrl": updateData.aiVideoUrl || "",
-          "units.$.aiTestData": updateData.aiTestData || [],
-        },
+          aiVideoUrl: aiVideoUrl,
+          updatedAt: new Date()
+        }
       }
     );
 
-    res.json({ status: "ok", updated: result.modifiedCount });
+    console.log("✅ Subtopic updated with AI video, modified count:", result.modifiedCount);
+
+    if (result.modifiedCount === 0) {
+      return res.status(404).json({ error: "Subtopic not found" });
+    }
+
+    res.json({
+      status: "ok",
+      updated: result.modifiedCount,
+      message: "AI video URL saved successfully"
+    });
   } catch (err) {
-    console.error("❌ Error saving AI lesson:", err);
-    res.status(500).json({ status: "error", message: "Failed to save lesson" });
+    console.error("❌ Error updating subtopic with AI video:", err);
+    res.status(500).json({ error: "Failed to update subtopic: " + err.message });
+  }
+});
+
+// ✅ Get subtopic by ID
+app.get("/api/subtopic/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { dbname = "PadmasiniDB" } = req.query;
+
+    const dbConn = client.db(dbname);
+    const subtopic = await dbConn.collection("Content").findOne({ _id: new ObjectId(id) });
+
+    if (!subtopic) {
+      return res.status(404).json({ error: "Subtopic not found" });
+    }
+
+    res.json(subtopic);
+  } catch (err) {
+    console.error("❌ Error fetching subtopic:", err);
+    res.status(500).json({ error: "Failed to fetch subtopic" });
   }
 });
 
