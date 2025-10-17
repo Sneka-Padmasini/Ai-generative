@@ -120,86 +120,19 @@ app.post("/generate-and-upload", async (req, res) => {
   }
 });
 
-// ✅ Add Subtopic - Backend (Enhanced Logging)
+// ✅ Add Subtopic
 app.post("/api/addSubtopic", async (req, res) => {
-  // Set CORS headers
-  const origin = req.headers.origin;
-  const allowedOrigins = [
-    "https://majestic-frangollo-031fed.netlify.app",
-    "http://localhost:5173",
-    "http://localhost:5174"
-  ];
-
-  if (allowedOrigins.includes(origin)) {
-    res.header('Access-Control-Allow-Origin', origin);
-  }
-  res.header('Access-Control-Allow-Credentials', 'true');
-
   try {
     const payload = req.body;
+    if (!payload.unitName) return res.status(400).json({ error: "Missing unitName" });
 
-    // 🎯 ENHANCED LOGGING
-    console.log("🎯 ========== ADD SUBTOPIC REQUEST START ==========");
-    console.log("📥 Received payload for addSubtopic:");
-    console.log("   - Unit Name:", payload.unitName);
-    console.log("   - Subject:", payload.subjectName);
-    console.log("   - DB Name:", payload.dbname);
-    console.log("   - AI Video URL:", payload.aiVideoUrl || "NOT PROVIDED");
-    console.log("   - AI Video URL Length:", payload.aiVideoUrl ? payload.aiVideoUrl.length : 0);
-    console.log("   - Parent ID:", payload.parentId);
-    console.log("   - Root Unit ID:", payload.rootUnitId);
-    console.log("   - Image URLs count:", payload.imageUrls ? payload.imageUrls.length : 0);
-    console.log("   - Audio Files count:", payload.audioFileId ? payload.audioFileId.length : 0);
-    console.log("🎯 ========== ADD SUBTOPIC REQUEST END ==========");
-
-    if (!payload.unitName) {
-      return res.status(400).json({ error: "Missing unitName" });
-    }
-
-    // Use the correct database and collection
     const collection = db.collection("Content");
+    const result = await collection.insertOne(payload);
 
-    const subtopicData = {
-      ...payload,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      aiVideoUrl: payload.aiVideoUrl || ""
-    };
-
-    console.log("📝 Inserting subtopic data to MongoDB...");
-
-    const result = await collection.insertOne(subtopicData);
-
-    // 🎯 LOG SUCCESS
-    console.log("✅ ========== SUBTOPIC ADDED SUCCESSFULLY ==========");
-    console.log("   - MongoDB Inserted ID:", result.insertedId);
-    console.log("   - AI Video URL Saved:", subtopicData.aiVideoUrl || "NONE");
-    console.log("   - Collection:", collection.collectionName);
-    console.log("   - Database:", db.databaseName);
-    console.log("✅ ========== SUBTOPIC ADDED SUCCESSFULLY ==========");
-
-    res.json({
-      status: "ok",
-      insertedId: result.insertedId,
-      message: "Subtopic added successfully",
-      aiVideoUrl: payload.aiVideoUrl,
-      debug: {
-        aiVideoUrlReceived: payload.aiVideoUrl,
-        aiVideoUrlSaved: subtopicData.aiVideoUrl,
-        collection: collection.collectionName,
-        database: db.databaseName
-      }
-    });
+    res.json({ status: "ok", insertedId: result.insertedId });
   } catch (err) {
-    console.error("❌ ========== ADD SUBTOPIC ERROR ==========");
-    console.error("   - Error:", err.message);
-    console.error("   - Stack:", err.stack);
-    console.error("❌ ========== ADD SUBTOPIC ERROR ==========");
-
-    res.status(500).json({
-      error: "Failed to add subtopic: " + err.message,
-      details: err.stack
-    });
+    console.error("❌ /api/addSubtopic error:", err);
+    res.status(500).json({ error: "Failed to add subtopic" });
   }
 });
 
