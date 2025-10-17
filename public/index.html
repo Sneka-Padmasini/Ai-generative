@@ -225,6 +225,7 @@
       });
 
       // generate AI video
+      // generate AI video - FIXED URL
       document.getElementById("generateVideoBtn").addEventListener("click", async () => {
         const desc = document.getElementById("customDescription").value.trim() || description;
         const loading = document.getElementById("loadingMessage");
@@ -241,6 +242,7 @@
         try {
           console.log("🎬 Generating AI video for:", subtopic);
 
+          // ✅ FIXED: Use your actual backend URL instead of the AI service URL
           const res = await fetch("https://final-padmasini7.onrender.com/generate-and-upload", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
