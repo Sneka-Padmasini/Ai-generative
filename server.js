@@ -91,7 +91,7 @@ app.post("/generate-and-upload", async (req, res) => {
       "https://api.d-id.com/talks",
       {
         script: { type: "text", input: description, subtitles: "false" },
-        presenter_id: "amy-jcwq6j4g",
+        presenter_id: "amy-jcwqj4g",
       },
       {
         headers: { Authorization: DID_API_KEY, "Content-Type": "application/json" },
@@ -144,57 +144,7 @@ app.post("/generate-and-upload", async (req, res) => {
   }
 });
 
-// ✅ Debug: Check ALL documents and subtopics (MISSING FROM YOUR CODE)
-app.get("/api/debug-all-subtopics", async (req, res) => {
-  try {
-    const { dbname = "professional" } = req.query;
-
-    console.log("🔍 Checking ALL documents in database:", dbname);
-
-    const dbConn = getDB(dbname);
-    const collection = dbConn.collection("Content");
-
-    // Get all documents
-    const allDocuments = await collection.find({}).toArray();
-
-    console.log("📊 Found", allDocuments.length, "documents in database");
-
-    // Extract ALL subtopic IDs from ALL documents
-    const allSubtopicIds = [];
-
-    allDocuments.forEach(doc => {
-      console.log(`📄 Document: ${doc._id} - ${doc.unitName}`);
-
-      if (doc.units && Array.isArray(doc.units)) {
-        doc.units.forEach(unit => {
-          if (unit._id) {
-            allSubtopicIds.push({
-              parentDocumentId: doc._id,
-              parentDocumentName: doc.unitName,
-              subtopicId: unit._id,
-              subtopicName: unit.unitName || 'No name',
-              hasAiVideoUrl: !!unit.aiVideoUrl,
-              explanation: unit.explanation || 'No description'
-            });
-          }
-        });
-      }
-    });
-
-    res.json({
-      totalDocuments: allDocuments.length,
-      totalSubtopics: allSubtopicIds.length,
-      allSubtopicIds: allSubtopicIds,
-      recentDocuments: allDocuments.slice(0, 3)
-    });
-
-  } catch (err) {
-    console.error("❌ Debug all documents error:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ✅ Debug: Check specific subtopic
+// ✅ FIXED: Debug endpoint to find subtopic in ALL possible locations
 app.get("/api/debug-subtopic/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -205,24 +155,103 @@ app.get("/api/debug-subtopic/:id", async (req, res) => {
     const dbConn = getDB(dbname);
     const collection = dbConn.collection("Content");
 
-    // Find parent document containing this subtopic
-    const parentDoc = await collection.findOne({ "units._id": id });
+    let foundLocation = null;
+    let foundDocument = null;
 
-    if (parentDoc) {
-      const foundUnit = parentDoc.units.find(unit => unit._id === id);
-      console.log("✅ Found subtopic:", foundUnit);
+    // 🔍 SEARCH 1: Look for document with this ID as main document
+    try {
+      foundDocument = await collection.findOne({ _id: new ObjectId(id) });
+      if (foundDocument) {
+        foundLocation = "main_document";
+        console.log("✅ Found as main document");
+      }
+    } catch (e) {
+      console.log("❌ Not a valid ObjectId for main document search");
+    }
+
+    // 🔍 SEARCH 2: Look for document with this ID in units array (nested subtopic)
+    if (!foundDocument) {
+      try {
+        const parentDoc = await collection.findOne({ "units._id": id });
+        if (parentDoc) {
+          foundDocument = parentDoc;
+          foundLocation = "nested_in_units";
+          console.log("✅ Found as nested unit in parent document");
+        }
+      } catch (e) {
+        console.log("❌ Error searching in units array");
+      }
+    }
+
+    // 🔍 SEARCH 3: Look for document with this ID in units array using ObjectId
+    if (!foundDocument) {
+      try {
+        const parentDoc = await collection.findOne({ "units._id": new ObjectId(id) });
+        if (parentDoc) {
+          foundDocument = parentDoc;
+          foundLocation = "nested_in_units_objectid";
+          console.log("✅ Found as nested unit using ObjectId");
+        }
+      } catch (e) {
+        console.log("❌ Error searching in units array with ObjectId");
+      }
+    }
+
+    // 🔍 SEARCH 4: Look for ANY document containing this ID anywhere
+    if (!foundDocument) {
+      try {
+        const allDocs = await collection.find({}).toArray();
+        const matchingDocs = allDocs.filter(doc =>
+          JSON.stringify(doc).includes(id)
+        );
+
+        if (matchingDocs.length > 0) {
+          foundDocument = matchingDocs[0];
+          foundLocation = "string_search";
+          console.log("✅ Found via string search");
+        }
+      } catch (e) {
+        console.log("❌ Error in string search");
+      }
+    }
+
+    if (foundDocument) {
+      console.log("✅ Subtopic found in location:", foundLocation);
+
+      // Extract the specific subtopic if it's nested
+      let specificSubtopic = foundDocument;
+      if (foundLocation.includes("nested")) {
+        specificSubtopic = foundDocument.units?.find(unit =>
+          unit._id === id || unit._id?.toString() === id
+        );
+      }
 
       res.json({
         found: true,
-        parentDocumentId: parentDoc._id,
-        subtopic: foundUnit,
-        parentDocument: parentDoc
+        location: foundLocation,
+        subtopic: specificSubtopic,
+        parentDocument: foundLocation.includes("nested") ? foundDocument : null,
+        fullDocument: foundDocument
       });
     } else {
-      console.log("❌ Subtopic not found");
+      console.log("❌ Subtopic not found in any location");
+
+      // List all documents for debugging
+      const allDocs = await collection.find({}).limit(10).toArray();
+      const docSummary = allDocs.map(doc => ({
+        _id: doc._id,
+        unitName: doc.unitName,
+        hasUnits: !!doc.units,
+        unitsCount: doc.units?.length || 0
+      }));
+
       res.json({
         found: false,
-        message: "Subtopic not found in database"
+        message: "Subtopic not found in database",
+        debug: {
+          searchedId: id,
+          sampleDocuments: docSummary
+        }
       });
     }
 
@@ -232,7 +261,7 @@ app.get("/api/debug-subtopic/:id", async (req, res) => {
   }
 });
 
-// ✅ Update Subtopic with AI Video URL - USE STRING MATCHING
+// ✅ FIXED: Update Subtopic with AI Video URL - Search in ALL locations
 app.put("/api/updateSubtopicVideo", async (req, res) => {
   try {
     const { subtopicId, aiVideoUrl, dbname = "professional" } = req.body;
@@ -248,32 +277,103 @@ app.put("/api/updateSubtopicVideo", async (req, res) => {
     const dbConn = getDB(dbname);
     const collection = dbConn.collection("Content");
 
-    // 🎯 CRITICAL: Use STRING matching (no ObjectId conversion)
-    const result = await collection.updateOne(
-      { "units._id": subtopicId }, // String to string matching
-      {
-        $set: {
-          "units.$.aiVideoUrl": aiVideoUrl,
-          updatedAt: new Date()
+    let result;
+    let updateLocation = "unknown";
+
+    // 🎯 ATTEMPT 1: Update as main document
+    try {
+      result = await collection.updateOne(
+        { _id: new ObjectId(subtopicId) },
+        {
+          $set: {
+            aiVideoUrl: aiVideoUrl,
+            updatedAt: new Date()
+          }
         }
+      );
+
+      if (result.matchedCount > 0) {
+        updateLocation = "main_document";
+        console.log("✅ Updated as main document");
       }
-    );
+    } catch (e) {
+      console.log("❌ Not a valid ObjectId for main document");
+    }
 
-    console.log("🔍 Node.js result - Matched:", result.matchedCount, "Modified:", result.modifiedCount);
+    // 🎯 ATTEMPT 2: Update as nested unit (string ID)
+    if (!result || result.matchedCount === 0) {
+      result = await collection.updateOne(
+        { "units._id": subtopicId },
+        {
+          $set: {
+            "units.$.aiVideoUrl": aiVideoUrl,
+            updatedAt: new Date()
+          }
+        }
+      );
 
-    if (result.matchedCount === 0) {
-      console.log("❌ No documents matched.");
+      if (result.matchedCount > 0) {
+        updateLocation = "nested_unit_string";
+        console.log("✅ Updated as nested unit (string ID)");
+      }
+    }
+
+    // 🎯 ATTEMPT 3: Update as nested unit (ObjectId)
+    if (!result || result.matchedCount === 0) {
+      try {
+        result = await collection.updateOne(
+          { "units._id": new ObjectId(subtopicId) },
+          {
+            $set: {
+              "units.$.aiVideoUrl": aiVideoUrl,
+              updatedAt: new Date()
+            }
+          }
+        );
+
+        if (result.matchedCount > 0) {
+          updateLocation = "nested_unit_objectid";
+          console.log("✅ Updated as nested unit (ObjectId)");
+        }
+      } catch (e) {
+        console.log("❌ Not a valid ObjectId for nested unit");
+      }
+    }
+
+    console.log("🔍 Final result - Matched:", result?.matchedCount, "Modified:", result?.modifiedCount);
+
+    if (!result || result.matchedCount === 0) {
+      console.log("❌ No documents matched in any location.");
+
+      // Debug: Show what's in the database
+      const debugDocs = await collection.find({}).limit(5).toArray();
+      console.log("📊 Sample documents:", debugDocs.map(doc => ({
+        _id: doc._id,
+        unitName: doc.unitName,
+        hasUnits: !!doc.units,
+        units: doc.units?.map(u => ({ _id: u._id, unitName: u.unitName }))
+      })));
+
       return res.status(404).json({
         error: "Subtopic not found. Please make sure the subtopic exists in the database.",
-        subtopicId: subtopicId
+        subtopicId: subtopicId,
+        debug: {
+          updateLocation: updateLocation,
+          sampleDocuments: debugDocs.map(doc => ({
+            _id: doc._id,
+            unitName: doc.unitName,
+            hasUnits: !!doc.units
+          }))
+        }
       });
     }
 
-    console.log("✅ Node.js: AI video URL saved successfully!");
+    console.log("✅ Node.js: AI video URL saved successfully! Location:", updateLocation);
 
     res.json({
       status: "ok",
       updated: result.modifiedCount,
+      location: updateLocation,
       message: "AI video URL saved successfully via Node.js"
     });
 
@@ -283,7 +383,7 @@ app.put("/api/updateSubtopicVideo", async (req, res) => {
   }
 });
 
-// ✅ Add Subtopic - Save initial subtopic data
+// ✅ FIXED: Add Subtopic - Ensure it creates searchable documents
 app.post("/api/addSubtopic", async (req, res) => {
   try {
     const payload = req.body;
@@ -296,26 +396,90 @@ app.post("/api/addSubtopic", async (req, res) => {
     const dbConn = getDB(payload.dbname || "professional");
     const collection = dbConn.collection("Content");
 
+    // Create a proper document structure that can be found later
     const documentToInsert = {
       ...payload,
+      _id: payload.parentId ? new ObjectId() : new ObjectId(payload.subtopicId || undefined),
       createdAt: new Date(),
       updatedAt: new Date(),
     };
 
-    console.log("💾 Inserting subtopic document");
+    // If it's a nested subtopic, add it to the parent's units array
+    if (payload.parentId) {
+      console.log("💾 Adding nested subtopic to parent:", payload.parentId);
 
-    const result = await collection.insertOne(documentToInsert);
+      const result = await collection.updateOne(
+        { _id: new ObjectId(payload.parentId) },
+        {
+          $push: {
+            units: {
+              _id: payload.subtopicId || new ObjectId().toString(),
+              unitName: payload.unitName,
+              explanation: payload.explanation,
+              imageUrls: payload.imageUrls || [],
+              audioFileId: payload.audioFileId || [],
+              aiVideoUrl: payload.aiVideoUrl || "",
+              createdAt: new Date()
+            }
+          }
+        }
+      );
 
-    console.log("✅ Subtopic inserted successfully, ID:", result.insertedId);
+      console.log("✅ Nested subtopic added to parent. Matched:", result.matchedCount, "Modified:", result.modifiedCount);
 
-    res.json({
-      status: "ok",
-      insertedId: result.insertedId,
-      insertedSubId: result.insertedId.toString()
-    });
+      res.json({
+        status: "ok",
+        insertedId: payload.subtopicId || new ObjectId().toString(),
+        insertedSubId: payload.subtopicId || new ObjectId().toString(),
+        parentUpdated: result.modifiedCount > 0
+      });
+    } else {
+      // It's a main document
+      console.log("💾 Inserting as main document");
+      const result = await collection.insertOne(documentToInsert);
+
+      console.log("✅ Subtopic inserted as main document, ID:", result.insertedId);
+
+      res.json({
+        status: "ok",
+        insertedId: result.insertedId,
+        insertedSubId: result.insertedId.toString()
+      });
+    }
   } catch (err) {
     console.error("❌ /api/addSubtopic error:", err);
     res.status(500).json({ error: "Failed to add subtopic: " + err.message });
+  }
+});
+
+// ✅ NEW: Debug all documents endpoint
+app.get("/api/debug-all", async (req, res) => {
+  try {
+    const { dbname = "professional" } = req.query;
+    const dbConn = getDB(dbname);
+    const collection = dbConn.collection("Content");
+
+    const allDocs = await collection.find({}).toArray();
+
+    const simplifiedDocs = allDocs.map(doc => ({
+      _id: doc._id,
+      unitName: doc.unitName,
+      parentId: doc.parentId,
+      rootUnitId: doc.rootUnitId,
+      hasUnits: !!doc.units,
+      units: doc.units?.map(unit => ({
+        _id: unit._id,
+        unitName: unit.unitName,
+        hasAiVideo: !!unit.aiVideoUrl
+      }))
+    }));
+
+    res.json({
+      totalDocuments: allDocs.length,
+      documents: simplifiedDocs
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
