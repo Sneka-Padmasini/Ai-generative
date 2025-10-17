@@ -224,8 +224,7 @@
         container.appendChild(div);
       });
 
-      // generate AI video
-      // generate AI video - FIXED URL
+      // generate AI video - CALL YOUR SPRING BOOT BACKEND
       document.getElementById("generateVideoBtn").addEventListener("click", async () => {
         const desc = document.getElementById("customDescription").value.trim() || description;
         const loading = document.getElementById("loadingMessage");
@@ -242,18 +241,27 @@
         try {
           console.log("🎬 Generating AI video for:", subtopic);
 
-          // ✅ FIXED: Use your actual backend URL instead of the AI service URL
+          // ✅ Call your Spring Boot backend
           const res = await fetch("https://final-padmasini7.onrender.com/generate-and-upload", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+            },
             body: JSON.stringify({ subtopic, description: desc }),
           });
 
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error || "Video generation failed");
+          if (!res.ok) {
+            const errorText = await res.text();
+            throw new Error(errorText || "Video generation failed");
+          }
 
-          aiVideoUrl = data.firebase_video_url;
+          const data = await res.json();
+          aiVideoUrl = data.firebase_video_url || data.videoUrl;
           console.log("✅ AI Video URL received:", aiVideoUrl);
+
+          if (!aiVideoUrl) {
+            throw new Error("No video URL returned from server");
+          }
 
           // Store in localStorage for main app
           localStorage.setItem("generatedAIVideoUrl", aiVideoUrl);
@@ -286,7 +294,7 @@
 
           console.log("💾 Saving AI video to subtopic:", parentId, aiVideoUrlToSave);
 
-          // Update the existing subtopic with AI video URL
+          // Update the existing subtopic with AI video URL - CALL SPRING BOOT
           const updateResponse = await fetch("https://final-padmasini7.onrender.com/api/updateSubtopicVideo", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
@@ -297,9 +305,12 @@
             }),
           });
 
-          const updateData = await updateResponse.json();
-          if (!updateResponse.ok) throw new Error(updateData.error || "Failed to update subtopic with AI video");
+          if (!updateResponse.ok) {
+            const errorText = await updateResponse.text();
+            throw new Error(errorText || "Failed to update subtopic with AI video");
+          }
 
+          const updateData = await updateResponse.json();
           console.log("✅ AI video saved to database:", updateData);
 
           // Clean up
