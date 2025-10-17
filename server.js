@@ -146,6 +146,7 @@ app.post("/generate-and-upload", async (req, res) => {
 });
 
 // ✅ Debug endpoint to check database structure
+// ✅ Debug endpoint - UPDATED FOR STRING IDS
 app.get("/api/debug-subtopic/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -158,30 +159,36 @@ app.get("/api/debug-subtopic/:id", async (req, res) => {
 
     const results = {};
 
-    // Query 1: Find by units._id as ObjectId
+    // Query 1: Find by units._id as STRING (correct for your DB)
+    results.query1_string = await collection.findOne({ "units._id": id });
+    console.log("🔍 Query 1 (units._id as string):", results.query1_string ? "FOUND" : "NOT FOUND");
+
+    // Query 2: Try with ObjectId conversion (might fail)
     try {
-      results.query1 = await collection.findOne({ "units._id": new ObjectId(id) });
-      console.log("🔍 Query 1 (units._id as ObjectId):", results.query1 ? "FOUND" : "NOT FOUND");
+      results.query2_objectId = await collection.findOne({ "units._id": new ObjectId(id) });
+      console.log("🔍 Query 2 (units._id as ObjectId):", results.query2_objectId ? "FOUND" : "NOT FOUND");
     } catch (e) {
-      results.query1_error = e.message;
-      console.log("🔍 Query 1 error:", e.message);
+      results.query2_error = "Cannot convert to ObjectId: " + e.message;
     }
 
-    // Query 2: Find by _id as ObjectId
-    try {
-      results.query2 = await collection.findOne({ _id: new ObjectId(id) });
-      console.log("🔍 Query 2 (_id as ObjectId):", results.query2 ? "FOUND" : "NOT FOUND");
-    } catch (e) {
-      results.query2_error = e.message;
-      console.log("🔍 Query 2 error:", e.message);
+    // Query 3: Find the parent document that contains this subtopic
+    results.parentDocument = await collection.findOne({
+      "units": {
+        $elemMatch: {
+          "_id": id
+        }
+      }
+    });
+
+    // Show what we found
+    if (results.parentDocument) {
+      console.log("✅ Found parent document:", results.parentDocument._id);
+      const foundUnit = results.parentDocument.units.find(unit => unit._id === id);
+      if (foundUnit) {
+        results.foundSubtopic = foundUnit;
+        console.log("✅ Found subtopic:", foundUnit.unitName);
+      }
     }
-
-    // Query 3: Find by units._id as string
-    results.query3 = await collection.findOne({ "units._id": id });
-    console.log("🔍 Query 3 (units._id as string):", results.query3 ? "FOUND" : "NOT FOUND");
-
-    // Query 4: Find all documents with units array
-    results.documentsWithUnits = await collection.find({ "units": { $exists: true } }).limit(5).toArray();
 
     res.json({
       subtopicId: id,
@@ -194,8 +201,8 @@ app.get("/api/debug-subtopic/:id", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 // ✅ Update Subtopic with AI Video URL - ENHANCED WITH BETTER DEBUGGING
+// ✅ Update Subtopic with AI Video URL - FIXED FOR STRING IDS
 app.put("/api/updateSubtopicVideo", async (req, res) => {
   try {
     const { subtopicId, aiVideoUrl, dbname = "professional" } = req.body;
@@ -214,95 +221,31 @@ app.put("/api/updateSubtopicVideo", async (req, res) => {
     let result;
     let queryUsed = "";
 
-    // Try Query 1: Update nested unit in units array using ObjectId
-    try {
-      queryUsed = "Query 1: units._id with ObjectId";
-      result = await collection.updateOne(
-        { "units._id": new ObjectId(subtopicId) },
-        {
-          $set: {
-            "units.$.aiVideoUrl": aiVideoUrl,
-            updatedAt: new Date()
-          }
+    // 🎯 CRITICAL FIX: Query using STRING ID (not ObjectId)
+    // Your database shows _id in units array is stored as String, not ObjectId
+    queryUsed = "Query: units._id with string (correct for your DB)";
+    result = await collection.updateOne(
+      { "units._id": subtopicId }, // Use string directly, no ObjectId conversion
+      {
+        $set: {
+          "units.$.aiVideoUrl": aiVideoUrl,
+          updatedAt: new Date()
         }
-      );
-      console.log("🔍 Query 1 result - Matched:", result.matchedCount, "Modified:", result.modifiedCount);
-    } catch (error) {
-      console.log("🔍 Query 1 failed:", error.message);
-    }
-
-    // If Query 1 didn't work, try Query 2: Update using string ID
-    if (!result || result.matchedCount === 0) {
-      try {
-        queryUsed = "Query 2: units._id with string";
-        result = await collection.updateOne(
-          { "units._id": subtopicId },
-          {
-            $set: {
-              "units.$.aiVideoUrl": aiVideoUrl,
-              updatedAt: new Date()
-            }
-          }
-        );
-        console.log("🔍 Query 2 result - Matched:", result.matchedCount, "Modified:", result.modifiedCount);
-      } catch (error) {
-        console.log("🔍 Query 2 failed:", error.message);
       }
-    }
+    );
 
-    // If still not found, try Query 3: Update document directly
-    if (!result || result.matchedCount === 0) {
-      try {
-        queryUsed = "Query 3: _id with ObjectId";
-        result = await collection.updateOne(
-          { _id: new ObjectId(subtopicId) },
-          {
-            $set: {
-              aiVideoUrl: aiVideoUrl,
-              updatedAt: new Date()
-            }
-          }
-        );
-        console.log("🔍 Query 3 result - Matched:", result.matchedCount, "Modified:", result.modifiedCount);
-      } catch (error) {
-        console.log("🔍 Query 3 failed:", error.message);
-      }
-    }
+    console.log("🔍 Query result - Matched:", result.matchedCount, "Modified:", result.modifiedCount);
 
-    // If still not found, try Query 4: Update document with string ID
-    if (!result || result.matchedCount === 0) {
-      try {
-        queryUsed = "Query 4: _id with string";
-        result = await collection.updateOne(
-          { _id: subtopicId },
-          {
-            $set: {
-              aiVideoUrl: aiVideoUrl,
-              updatedAt: new Date()
-            }
-          }
-        );
-        console.log("🔍 Query 4 result - Matched:", result.matchedCount, "Modified:", result.modifiedCount);
-      } catch (error) {
-        console.log("🔍 Query 4 failed:", error.message);
-      }
-    }
-
-    if (!result || result.matchedCount === 0) {
-      console.log("❌ All queries failed to find the subtopic");
+    if (result.matchedCount === 0) {
+      console.log("❌ No documents matched with string query");
       return res.status(404).json({
-        error: "Subtopic not found. Tried 4 different query patterns.",
+        error: "Subtopic not found. Make sure the subtopic exists and the ID is correct.",
         subtopicId: subtopicId,
-        queriesTried: [
-          "units._id with ObjectId",
-          "units._id with string",
-          "_id with ObjectId",
-          "_id with string"
-        ]
+        suggestion: "The ID exists but might be in a different format. Check database structure."
       });
     }
 
-    console.log("✅ AI video URL saved successfully using:", queryUsed);
+    console.log("✅ AI video URL saved successfully!");
 
     res.json({
       status: "ok",
