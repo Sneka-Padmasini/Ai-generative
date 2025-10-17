@@ -8,23 +8,36 @@ require("dotenv").config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ✅ CORS configuration - ADDED AI PAGE DOMAIN
-const corsOptions = {
-  origin: [
-    "https://majestic-frangollo-031fed.netlify.app",
-    "http://localhost:5173",
-    "http://localhost:5174",
-    "https://ai-generative-rhk1.onrender.com", // Add this line for AI page
-  ],
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+// ✅ Enhanced CORS configuration
+const allowedOrigins = [
+  "https://majestic-frangollo-031fed.netlify.app",
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "https://ai-generative-rhk1.onrender.com",
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.indexOf(origin) === -1) {
+      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  },
   credentials: true,
-};
-app.use(cors(corsOptions));
-app.options("*", cors(corsOptions));
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+}));
+
+// Handle preflight requests
+app.options('*', cors());
 
 // ✅ JSON body parsing
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // ✅ Serve frontend
 app.use(express.static(path.join(__dirname, "public")));
@@ -38,17 +51,22 @@ if (!MONGO_URI) {
   console.error("❌ Missing MONGO_URI in .env");
   process.exit(1);
 }
+
 const client = new MongoClient(MONGO_URI);
 let db;
 
-client.connect()
-  .then(() => {
+async function connectDB() {
+  try {
+    await client.connect();
     db = client.db("professional");
     console.log("✅ Connected to MongoDB Professional DB");
-  })
-  .catch(err => {
+  } catch (err) {
     console.error("❌ MongoDB connection error:", err);
-  });
+    process.exit(1);
+  }
+}
+
+connectDB();
 
 // ✅ D-ID API key
 if (!process.env.DID_API_KEY) {
@@ -59,6 +77,11 @@ const DID_API_KEY = `Basic ${Buffer.from(process.env.DID_API_KEY).toString("base
 
 // ✅ Generate AI video (D-ID) with validation
 app.post("/generate-and-upload", async (req, res) => {
+  // Set CORS headers explicitly
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
   const { subtopic, description } = req.body;
 
   if (!subtopic || !description || description.trim().length < 3) {
@@ -79,7 +102,7 @@ app.post("/generate-and-upload", async (req, res) => {
       },
       {
         headers: { Authorization: DID_API_KEY, "Content-Type": "application/json" },
-        timeout: 60000,
+        timeout: 120000, // Increased timeout
       }
     );
 
@@ -89,8 +112,11 @@ app.post("/generate-and-upload", async (req, res) => {
 
     console.log("⏳ Polling for video status, talkId:", talkId);
 
-    // Poll until video is ready
-    while (status !== "done") {
+    // Poll until video is ready (max 10 minutes)
+    const startTime = Date.now();
+    const maxWaitTime = 10 * 60 * 1000; // 10 minutes
+
+    while (status !== "done" && (Date.now() - startTime) < maxWaitTime) {
       const poll = await axios.get(`https://api.d-id.com/talks/${talkId}`, {
         headers: { Authorization: DID_API_KEY },
         timeout: 30000,
@@ -102,11 +128,17 @@ app.post("/generate-and-upload", async (req, res) => {
       if (status === "done") {
         videoUrl = poll.data.result_url;
         console.log("✅ D-ID Video ready:", videoUrl);
+        break;
       } else if (status === "failed") {
         throw new Error("D-ID video generation failed");
       } else {
-        await new Promise(r => setTimeout(r, 2000));
+        // Wait 3 seconds before polling again
+        await new Promise(r => setTimeout(r, 3000));
       }
+    }
+
+    if (status !== "done") {
+      throw new Error("Video generation timeout");
     }
 
     res.json({
@@ -202,27 +234,13 @@ app.put("/api/updateSubtopicVideo", async (req, res) => {
   }
 });
 
-// ✅ Get subtopic by ID
-app.get("/api/subtopic/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { dbname = "PadmasiniDB" } = req.query;
-
-    const dbConn = client.db(dbname);
-    const subtopic = await dbConn.collection("Content").findOne({ _id: new ObjectId(id) });
-
-    if (!subtopic) {
-      return res.status(404).json({ error: "Subtopic not found" });
-    }
-
-    res.json(subtopic);
-  } catch (err) {
-    console.error("❌ Error fetching subtopic:", err);
-    res.status(500).json({ error: "Failed to fetch subtopic" });
-  }
+// ✅ Health check endpoint
+app.get("/health", (req, res) => {
+  res.json({ status: "OK", timestamp: new Date().toISOString() });
 });
 
 // ✅ Start server
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`✅ Server running on http://0.0.0.0:${PORT}`);
+  console.log(`✅ CORS enabled for origins:`, allowedOrigins);
 });
