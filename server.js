@@ -121,18 +121,58 @@ app.post("/generate-and-upload", async (req, res) => {
 });
 
 // ✅ Add Subtopic
+// ✅ Add Subtopic - Backend (Fixed)
 app.post("/api/addSubtopic", async (req, res) => {
+  // Set CORS headers
+  const origin = req.headers.origin;
+  const allowedOrigins = [
+    "https://majestic-frangollo-031fed.netlify.app",
+    "http://localhost:5173",
+    "http://localhost:5174"
+  ];
+
+  if (allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+  }
+  res.header('Access-Control-Allow-Credentials', 'true');
+
   try {
     const payload = req.body;
-    if (!payload.unitName) return res.status(400).json({ error: "Missing unitName" });
+    console.log("📥 Received payload for addSubtopic:", payload);
 
-    const collection = db.collection("Content");
-    const result = await collection.insertOne(payload);
+    if (!payload.unitName) {
+      return res.status(400).json({ error: "Missing unitName" });
+    }
 
-    res.json({ status: "ok", insertedId: result.insertedId });
+    // Use the correct database and collection
+    const collection = db.collection("Content"); // or your actual collection name
+
+    const subtopicData = {
+      ...payload,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      // Ensure aiVideoUrl is properly saved
+      aiVideoUrl: payload.aiVideoUrl || ""
+    };
+
+    console.log("📝 Inserting subtopic data:", subtopicData);
+
+    const result = await collection.insertOne(subtopicData);
+
+    console.log("✅ Subtopic added successfully, ID:", result.insertedId);
+
+    res.json({
+      status: "ok",
+      insertedId: result.insertedId,
+      message: "Subtopic added successfully",
+      aiVideoUrl: payload.aiVideoUrl // Return the AI video URL for confirmation
+    });
   } catch (err) {
     console.error("❌ /api/addSubtopic error:", err);
-    res.status(500).json({ error: "Failed to add subtopic" });
+    res.status(500).json({
+      error: "Failed to add subtopic: " + err.message,
+      details: err.stack
+    });
   }
 });
 
