@@ -194,12 +194,12 @@ app.post("/api/addSubtopic", async (req, res) => {
   }
 });
 
-// ✅ Update Subtopic with AI Video URL
+// ✅ Update Subtopic with AI Video URL - FIXED QUERY
 app.put("/api/updateSubtopicVideo", async (req, res) => {
   try {
-    const { subtopicId, aiVideoUrl, dbname = "PadmasiniDB" } = req.body;
+    const { subtopicId, aiVideoUrl, dbname = "professional" } = req.body;
 
-    console.log("🔄 Updating subtopic with AI video:", { subtopicId, aiVideoUrl });
+    console.log("🔄 Updating subtopic with AI video:", { subtopicId, aiVideoUrl, dbname });
 
     if (!subtopicId || !aiVideoUrl) {
       return res.status(400).json({
@@ -210,11 +210,12 @@ app.put("/api/updateSubtopicVideo", async (req, res) => {
     const dbConn = client.db(dbname);
     const collection = dbConn.collection("Content");
 
+    // Fix the query - update the nested unit in the units array
     const result = await collection.updateOne(
-      { _id: new ObjectId(subtopicId) },
+      { "units._id": new ObjectId(subtopicId) },
       {
         $set: {
-          aiVideoUrl: aiVideoUrl,
+          "units.$.aiVideoUrl": aiVideoUrl,
           updatedAt: new Date()
         }
       }
@@ -223,7 +224,28 @@ app.put("/api/updateSubtopicVideo", async (req, res) => {
     console.log("✅ Subtopic updated with AI video, modified count:", result.modifiedCount);
 
     if (result.modifiedCount === 0) {
-      return res.status(404).json({ error: "Subtopic not found" });
+      // Try alternative query if the first one fails
+      const result2 = await collection.updateOne(
+        { _id: new ObjectId(subtopicId) },
+        {
+          $set: {
+            aiVideoUrl: aiVideoUrl,
+            updatedAt: new Date()
+          }
+        }
+      );
+
+      console.log("✅ Alternative update result:", result2.modifiedCount);
+
+      if (result2.modifiedCount === 0) {
+        return res.status(404).json({ error: "Subtopic not found with either query" });
+      }
+
+      return res.json({
+        status: "ok",
+        updated: result2.modifiedCount,
+        message: "AI video URL saved successfully (alternative query)"
+      });
     }
 
     res.json({
