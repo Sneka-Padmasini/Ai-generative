@@ -72,6 +72,9 @@ if (!process.env.DID_API_KEY) {
 }
 const DID_API_KEY = `Basic ${Buffer.from(process.env.DID_API_KEY).toString("base64")}`;
 
+// ✅ Spring Boot API URL (update this to your actual Spring Boot URL)
+const SPRING_BOOT_URL = process.env.SPRING_BOOT_URL || "http://localhost:8080";
+
 // ✅ Generate AI video (D-ID)
 app.post("/generate-and-upload", async (req, res) => {
   try {
@@ -142,115 +145,125 @@ app.post("/generate-and-upload", async (req, res) => {
   }
 });
 
-// ✅ FIXED: Debug endpoint for Spring Boot MongoDB structure
+// ✅ FIXED: Debug endpoint that understands Spring Boot structure
 app.get("/api/debug-subtopic/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { dbname = "professional" } = req.query;
+    const { dbname = "professional", subjectName } = req.query;
 
-    console.log("🔍 Debugging subtopic in Spring Boot structure:", id);
+    console.log("🔍 Debugging subtopic in Spring Boot structure:", { id, dbname, subjectName });
 
     const dbConn = getDB(dbname);
 
-    // Get all collections to find where the subtopic exists
-    const collections = await dbConn.listCollections().toArray();
-    let foundSubtopic = null;
-    let foundCollection = null;
-    let foundLocation = null;
+    // Strategy 1: Search in specific subject collection if provided
+    if (subjectName) {
+      const subjectCollection = dbConn.collection(subjectName);
 
-    for (const collectionInfo of collections) {
-      const collectionName = collectionInfo.name;
-      const collection = dbConn.collection(collectionName);
-
-      // Search 1: As main document
+      // Search as main document with _id
       try {
-        const mainDoc = await collection.findOne({ _id: new ObjectId(id) });
+        const mainDoc = await subjectCollection.findOne({ _id: new ObjectId(id) });
         if (mainDoc) {
-          foundSubtopic = mainDoc;
-          foundCollection = collectionName;
-          foundLocation = "main_document";
-          console.log(`✅ Found as main document in ${collectionName}`);
-          break;
+          return res.json({
+            found: true,
+            location: "main_document",
+            collection: subjectName,
+            subtopic: mainDoc,
+            message: "Subtopic found as main document"
+          });
         }
       } catch (e) {
         // Not a valid ObjectId, continue
       }
 
-      // Search 2: In units array (nested subtopic)
-      const parentWithUnits = await collection.findOne({
+      // Search in units array (Spring Boot structure)
+      const parentDoc = await subjectCollection.findOne({
         "units.id": id
       });
 
-      if (parentWithUnits) {
-        const nestedUnit = parentWithUnits.units.find(unit => unit.id === id);
+      if (parentDoc && parentDoc.units) {
+        const nestedUnit = parentDoc.units.find(unit => unit.id === id);
         if (nestedUnit) {
-          foundSubtopic = nestedUnit;
-          foundCollection = collectionName;
-          foundLocation = "nested_in_units";
-          foundSubtopic.parentDocument = {
-            _id: parentWithUnits._id,
-            unitName: parentWithUnits.unitName
-          };
-          console.log(`✅ Found as nested unit in ${collectionName}`);
-          break;
+          return res.json({
+            found: true,
+            location: "nested_in_units",
+            collection: subjectName,
+            subtopic: nestedUnit,
+            parentDocument: {
+              _id: parentDoc._id,
+              unitName: parentDoc.unitName
+            },
+            message: "Subtopic found as nested unit"
+          });
         }
-      }
-
-      // Search 3: In any field containing this ID
-      const anyDoc = await collection.findOne({
-        $or: [
-          { _id: id },
-          { "units.id": id },
-          { parentId: id },
-          { rootUnitId: id }
-        ]
-      });
-
-      if (anyDoc) {
-        foundSubtopic = anyDoc;
-        foundCollection = collectionName;
-        foundLocation = "any_field";
-        console.log(`✅ Found in ${collectionName} in field search`);
-        break;
       }
     }
 
-    if (foundSubtopic) {
-      res.json({
-        found: true,
-        location: foundLocation,
-        collection: foundCollection,
-        subtopic: foundSubtopic,
-        message: "Subtopic found successfully"
-      });
-    } else {
-      // List available collections and sample data for debugging
-      const collectionSamples = {};
-      for (const collectionInfo of collections.slice(0, 5)) {
-        const collectionName = collectionInfo.name;
-        const sampleDocs = await dbConn.collection(collectionName)
-          .find({})
-          .limit(2)
-          .toArray();
+    // Strategy 2: Search across all collections
+    const collections = await dbConn.listCollections().toArray();
 
-        collectionSamples[collectionName] = sampleDocs.map(doc => ({
-          _id: doc._id,
-          unitName: doc.unitName,
-          hasUnits: !!doc.units,
-          unitsCount: doc.units?.length || 0
-        }));
+    for (const collectionInfo of collections) {
+      const collectionName = collectionInfo.name;
+      const collection = dbConn.collection(collectionName);
+
+      // Search as main document
+      try {
+        const mainDoc = await collection.findOne({ _id: new ObjectId(id) });
+        if (mainDoc) {
+          return res.json({
+            found: true,
+            location: "main_document",
+            collection: collectionName,
+            subtopic: mainDoc,
+            message: "Subtopic found as main document"
+          });
+        }
+      } catch (e) {
+        // Not a valid ObjectId, continue
       }
 
-      res.json({
-        found: false,
-        message: "Subtopic not found in any collection",
-        debug: {
-          searchedId: id,
-          availableCollections: collections.map(c => c.name),
-          sampleData: collectionSamples
-        }
+      // Search in units array
+      const parentDoc = await collection.findOne({
+        "units.id": id
       });
+
+      if (parentDoc && parentDoc.units) {
+        const nestedUnit = parentDoc.units.find(unit => unit.id === id);
+        if (nestedUnit) {
+          return res.json({
+            found: true,
+            location: "nested_in_units",
+            collection: collectionName,
+            subtopic: nestedUnit,
+            parentDocument: {
+              _id: parentDoc._id,
+              unitName: parentDoc.unitName
+            },
+            message: "Subtopic found as nested unit"
+          });
+        }
+      }
     }
+
+    // Strategy 3: Try Spring Boot API directly
+    try {
+      console.log("🔄 Trying Spring Boot API directly...");
+      const springBootResponse = await axios.get(`${SPRING_BOOT_URL}/api/debug-subtopic/${id}?dbname=${dbname}`);
+
+      if (springBootResponse.data.found) {
+        return res.json(springBootResponse.data);
+      }
+    } catch (springErr) {
+      console.log("⚠️ Spring Boot API not available, continuing...");
+    }
+
+    // Not found
+    res.json({
+      found: false,
+      message: "Subtopic not found in any collection",
+      searchedId: id,
+      dbname: dbname,
+      subjectName: subjectName
+    });
 
   } catch (err) {
     console.error("❌ Debug error:", err);
@@ -261,9 +274,9 @@ app.get("/api/debug-subtopic/:id", async (req, res) => {
 // ✅ FIXED: Update Subtopic AI Video URL for Spring Boot structure
 app.put("/api/updateSubtopicVideo", async (req, res) => {
   try {
-    const { subtopicId, aiVideoUrl, dbname = "professional" } = req.body;
+    const { subtopicId, aiVideoUrl, dbname = "professional", subjectName } = req.body;
 
-    console.log("🔄 Updating subtopic AI video:", { subtopicId, aiVideoUrl, dbname });
+    console.log("🔄 Updating subtopic AI video:", { subtopicId, aiVideoUrl, dbname, subjectName });
 
     if (!subtopicId || !aiVideoUrl) {
       return res.status(400).json({
@@ -273,17 +286,92 @@ app.put("/api/updateSubtopicVideo", async (req, res) => {
 
     const dbConn = getDB(dbname);
     let result;
-    let updateLocation = "unknown";
-    let updatedCollection = "unknown";
 
-    // Search through all collections
+    // Strategy 1: Try Spring Boot API first
+    try {
+      console.log("🔄 Attempting update via Spring Boot API...");
+
+      const springBootResponse = await axios.put(`${SPRING_BOOT_URL}/api/updateSubtopicVideo`, {
+        subtopicId: subtopicId,
+        aiVideoUrl: aiVideoUrl,
+        dbname: dbname,
+        subjectName: subjectName
+      });
+
+      if (springBootResponse.data.updated || springBootResponse.data.status === "ok") {
+        return res.json({
+          status: "ok",
+          updated: springBootResponse.data.updated || 1,
+          location: "spring_boot_api",
+          message: "AI video URL saved via Spring Boot API"
+        });
+      }
+    } catch (springErr) {
+      console.log("⚠️ Spring Boot API not available, falling back to direct DB update...");
+    }
+
+    // Strategy 2: Direct MongoDB update (for Spring Boot structure)
+    console.log("🔄 Attempting direct MongoDB update...");
+
+    // Search in specific subject collection first
+    if (subjectName) {
+      const subjectCollection = dbConn.collection(subjectName);
+
+      // Update nested unit in units array
+      result = await subjectCollection.updateOne(
+        { "units.id": subtopicId },
+        {
+          $set: {
+            "units.$.aiVideoUrl": aiVideoUrl,
+            "units.$.updatedAt": new Date()
+          }
+        }
+      );
+
+      if (result.matchedCount > 0) {
+        return res.json({
+          status: "ok",
+          updated: result.modifiedCount,
+          location: "nested_unit",
+          collection: subjectName,
+          message: "AI video URL saved to nested unit"
+        });
+      }
+
+      // Update as main document
+      try {
+        result = await subjectCollection.updateOne(
+          { _id: new ObjectId(subtopicId) },
+          {
+            $set: {
+              aiVideoUrl: aiVideoUrl,
+              updatedAt: new Date()
+            }
+          }
+        );
+
+        if (result.matchedCount > 0) {
+          return res.json({
+            status: "ok",
+            updated: result.modifiedCount,
+            location: "main_document",
+            collection: subjectName,
+            message: "AI video URL saved to main document"
+          });
+        }
+      } catch (e) {
+        // Not a valid ObjectId, continue
+      }
+    }
+
+    // Strategy 3: Search across all collections
     const collections = await dbConn.listCollections().toArray();
 
     for (const collectionInfo of collections) {
       const collectionName = collectionInfo.name;
       const collection = dbConn.collection(collectionName);
 
-      // Try to update as nested unit first (most common case)
+      // Update nested unit
       result = await collection.updateOne(
         { "units.id": subtopicId },
         {
@@ -295,13 +383,16 @@ app.put("/api/updateSubtopicVideo", async (req, res) => {
       );
 
       if (result.matchedCount > 0) {
-        updateLocation = "nested_unit";
-        updatedCollection = collectionName;
-        console.log(`✅ Updated nested unit in ${collectionName}`);
-        break;
+        return res.json({
+          status: "ok",
+          updated: result.modifiedCount,
+          location: "nested_unit",
+          collection: collectionName,
+          message: "AI video URL saved to nested unit"
+        });
       }
 
-      // Try to update as main document
+      // Update main document
       try {
         result = await collection.updateOne(
           { _id: new ObjectId(subtopicId) },
@@ -314,39 +405,24 @@ app.put("/api/updateSubtopicVideo", async (req, res) => {
         );
 
         if (result.matchedCount > 0) {
-          updateLocation = "main_document";
-          updatedCollection = collectionName;
-          console.log(`✅ Updated main document in ${collectionName}`);
-          break;
+          return res.json({
+            status: "ok",
+            updated: result.modifiedCount,
+            location: "main_document",
+            collection: collectionName,
+            message: "AI video URL saved to main document"
+          });
         }
       } catch (e) {
         // Not a valid ObjectId, continue
       }
     }
 
-    console.log("🔍 Final result - Matched:", result?.matchedCount, "Modified:", result?.modifiedCount);
-
-    if (!result || result.matchedCount === 0) {
-      console.log("❌ No documents matched in any collection.");
-
-      return res.status(404).json({
-        error: "Subtopic not found. The subtopic might not exist or was not saved properly.",
-        subtopicId: subtopicId,
-        debug: {
-          collectionsSearched: collections.map(c => c.name),
-          suggestion: "Make sure the subtopic was saved via Spring Boot backend first"
-        }
-      });
-    }
-
-    console.log("✅ AI video URL saved successfully! Location:", updateLocation, "Collection:", updatedCollection);
-
-    res.json({
-      status: "ok",
-      updated: result.modifiedCount,
-      location: updateLocation,
-      collection: updatedCollection,
-      message: "AI video URL saved successfully"
+    // Not found
+    return res.status(404).json({
+      error: "Subtopic not found in database",
+      subtopicId: subtopicId,
+      suggestion: "Make sure the subtopic was created via Spring Boot /api/addSubtopic endpoint first"
     });
 
   } catch (err) {
@@ -355,37 +431,32 @@ app.put("/api/updateSubtopicVideo", async (req, res) => {
   }
 });
 
-// ✅ NEW: Direct Spring Boot communication endpoint
-app.post("/api/communicate-with-springboot", async (req, res) => {
+// ✅ NEW: Create a Spring Boot compatible endpoint for your frontend
+app.post("/api/create-subtopic-springboot", async (req, res) => {
   try {
-    const { action, data, springBootUrl = "http://localhost:8080" } = req.body;
+    const { parentId, unitName, description, dbname, subjectName } = req.body;
 
-    console.log("🔄 Communicating with Spring Boot:", { action, springBootUrl });
+    console.log("🔄 Creating subtopic via Spring Boot API:", { parentId, unitName, dbname, subjectName });
 
-    let response;
-
-    switch (action) {
-      case "debugSubtopic":
-        response = await axios.get(`${springBootUrl}/api/debug-subtopic/${data.subtopicId}?dbname=${data.dbname}`);
-        break;
-
-      case "updateSubtopicVideo":
-        response = await axios.put(`${springBootUrl}/api/updateSubtopicVideo`, data);
-        break;
-
-      default:
-        throw new Error("Unknown action: " + action);
-    }
+    // Call your Spring Boot /api/addSubtopic endpoint
+    const springBootResponse = await axios.post(`${SPRING_BOOT_URL}/api/addSubtopic`, {
+      dbname: dbname,
+      subjectName: subjectName,
+      parentId: parentId,
+      unitName: unitName,
+      description: description
+    });
 
     res.json({
-      status: "ok",
-      springBootResponse: response.data
+      success: true,
+      springBootResponse: springBootResponse.data,
+      subtopicId: springBootResponse.data.insertedSubId
     });
 
   } catch (err) {
-    console.error("❌ Spring Boot communication error:", err.message);
+    console.error("❌ Error creating subtopic via Spring Boot:", err.message);
     res.status(500).json({
-      error: "Failed to communicate with Spring Boot: " + err.message
+      error: "Failed to create subtopic: " + err.message
     });
   }
 });
@@ -395,18 +466,12 @@ app.get("/health", (req, res) => {
   res.json({
     status: "OK",
     timestamp: new Date().toISOString(),
-    service: "Node.js AI Video Backend"
+    service: "Node.js AI Video Backend",
+    springBootUrl: SPRING_BOOT_URL
   });
 });
 
-app.get("/api/test", (req, res) => {
-  res.json({
-    message: "Node.js backend is working!",
-    purpose: "AI Video Generation for Spring Boot subtopics"
-  });
-});
-
-// ✅ NEW: Database inspection endpoint
+// ✅ Database inspection endpoint
 app.get("/api/inspect-database", async (req, res) => {
   try {
     const { dbname = "professional" } = req.query;
@@ -420,7 +485,7 @@ app.get("/api/inspect-database", async (req, res) => {
       const collection = dbConn.collection(collectionName);
 
       const count = await collection.countDocuments();
-      const sample = await collection.find({}).limit(3).toArray();
+      const sample = await collection.find({}).limit(2).toArray();
 
       databaseInfo[collectionName] = {
         documentCount: count,
@@ -429,7 +494,8 @@ app.get("/api/inspect-database", async (req, res) => {
           unitName: doc.unitName,
           parentId: doc.parentId,
           hasUnits: !!doc.units,
-          units: doc.units?.map(u => ({ id: u.id, unitName: u.unitName })) || []
+          unitsCount: doc.units?.length || 0,
+          unitsSample: doc.units?.slice(0, 2).map(u => ({ id: u.id, unitName: u.unitName })) || []
         }))
       };
     }
@@ -447,6 +513,6 @@ app.get("/api/inspect-database", async (req, res) => {
 // ✅ Start server
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`✅ Node.js Server running on http://0.0.0.0:${PORT}`);
-  console.log(`✅ Configured for Spring Boot MongoDB structure`);
+  console.log(`✅ Configured for Spring Boot integration: ${SPRING_BOOT_URL}`);
   console.log(`✅ AI Video Generation Service Ready`);
 });
