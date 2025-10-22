@@ -303,8 +303,8 @@
       // save lesson - USING ONLY NODE.JS BACKEND
       document.getElementById("saveLessonBtn").addEventListener("click", async () => {
         try {
-          const aiVideoUrlToSave = aiVideoUrl || localStorage.getItem("generatedAIVideoUrl") || "";
-
+          //const aiVideoUrlToSave = aiVideoUrl || localStorage.getItem("generatedAIVideoUrl") || "";
+          const aiVideoUrlToSave = "sample";
           if (!aiVideoUrlToSave) {
             alert("Please generate an AI video first before saving");
             return;
