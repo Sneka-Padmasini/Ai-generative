@@ -262,9 +262,9 @@ app.get("/api/debug-subtopic/:id", async (req, res) => {
 // ✅ FIXED: Update Subtopic AI Video URL for Spring Boot structure
 app.put("/api/updateSubtopicVideo", async (req, res) => {
   try {
-    const { subtopicId, aiVideoUrl, dbname = "professional", subjectName } = req.body;
+    const { subtopicId, aiVideoUrl, dbname = "professional" } = req.body;
 
-    console.log("🔄 Updating subtopic AI video:", { subtopicId, aiVideoUrl, dbname, subjectName });
+    console.log("🔄 Updating subtopic AI video:", { subtopicId, aiVideoUrl, dbname });
 
     if (!subtopicId || !aiVideoUrl) {
       return res.status(400).json({
@@ -277,28 +277,16 @@ app.put("/api/updateSubtopicVideo", async (req, res) => {
     let updateLocation = "unknown";
     let updatedCollection = "unknown";
 
-    console.log("🔍 Searching for subtopic in collection:", subjectName);
+    // Search through all collections
+    const collections = await dbConn.listCollections().toArray();
 
-    const collection = dbConn.collection(subjectName);
+    for (const collectionInfo of collections) {
+      const collectionName = collectionInfo.name;
+      const collection = dbConn.collection(collectionName);
 
-    // 🔍 STRATEGY 1: Find parent document and update nested subtopic
-    console.log("🔍 Strategy 1: Searching for parent document containing subtopic...");
-
-    // First, find the parent document that contains this subtopic
-    const parentDoc = await collection.findOne({
-      "units._id": subtopicId
-    });
-
-    if (parentDoc) {
-      console.log("✅ Found parent document:", parentDoc._id);
-      console.log("📋 Parent units:", parentDoc.units?.map(u => ({ _id: u._id, unitName: u.unitName })));
-
-      // Update the specific subtopic within the units array
+      // Try to update as nested unit first (most common case)
       result = await collection.updateOne(
-        {
-          "_id": parentDoc._id,
-          "units._id": subtopicId
-        },
+        { "units.id": subtopicId },
         {
           $set: {
             "units.$.aiVideoUrl": aiVideoUrl,
@@ -308,15 +296,13 @@ app.put("/api/updateSubtopicVideo", async (req, res) => {
       );
 
       if (result.matchedCount > 0) {
-        updateLocation = "nested_in_parent_units";
-        updatedCollection = subjectName;
-        console.log(`✅ Updated nested subtopic in parent document`);
+        updateLocation = "nested_unit";
+        updatedCollection = collectionName;
+        console.log(`✅ Updated nested unit in ${collectionName}`);
+        break;
       }
-    }
 
-    // 🔍 STRATEGY 2: If not found, try direct document update
-    if (!result || result.matchedCount === 0) {
-      console.log("🔍 Strategy 2: Trying direct document update...");
+      // Try to update as main document
       try {
         result = await collection.updateOne(
           { _id: new ObjectId(subtopicId) },
@@ -330,41 +316,12 @@ app.put("/api/updateSubtopicVideo", async (req, res) => {
 
         if (result.matchedCount > 0) {
           updateLocation = "main_document";
-          updatedCollection = subjectName;
-          console.log(`✅ Updated as main document`);
-        }
-      } catch (e) {
-        console.log(`⚠️ ${subtopicId} is not a valid ObjectId for main document`);
-      }
-    }
-
-    // 🔍 STRATEGY 3: Search all collections if still not found
-    if (!result || result.matchedCount === 0) {
-      console.log("🔍 Strategy 3: Searching all collections...");
-      const collections = await dbConn.listCollections().toArray();
-
-      for (const collectionInfo of collections) {
-        const collName = collectionInfo.name;
-        const coll = dbConn.collection(collName);
-
-        // Try nested update in each collection
-        const parentResult = await coll.updateOne(
-          { "units._id": subtopicId },
-          {
-            $set: {
-              "units.$.aiVideoUrl": aiVideoUrl,
-              "units.$.updatedAt": new Date()
-            }
-          }
-        );
-
-        if (parentResult.matchedCount > 0) {
-          result = parentResult;
-          updateLocation = "nested_in_all_collections";
-          updatedCollection = collName;
-          console.log(`✅ Found in collection: ${collName}`);
+          updatedCollection = collectionName;
+          console.log(`✅ Updated main document in ${collectionName}`);
           break;
         }
+      } catch (e) {
+        // Not a valid ObjectId, continue
       }
     }
 
@@ -373,42 +330,17 @@ app.put("/api/updateSubtopicVideo", async (req, res) => {
     if (!result || result.matchedCount === 0) {
       console.log("❌ No documents matched in any collection.");
 
-      // Enhanced debugging: Show what's actually in the database
-      console.log("🔍 Debugging: Checking parent document structure...");
-      const debugParent = await collection.findOne({ _id: new ObjectId(req.body.parentId) });
-      if (debugParent) {
-        console.log("📋 Parent document found:", {
-          _id: debugParent._id,
-          unitName: debugParent.unitName,
-          units: debugParent.units?.map(u => ({ _id: u._id, unitName: u.unitName }))
-        });
-      } else {
-        console.log("❌ Parent document not found with ID:", req.body.parentId);
-      }
-
       return res.status(404).json({
-        error: "Subtopic not found",
+        error: "Subtopic not found. The subtopic might not exist or was not saved properly.",
         subtopicId: subtopicId,
         debug: {
-          parentId: req.body.parentId,
-          collectionSearched: subjectName,
-          parentExists: !!debugParent,
-          parentStructure: debugParent ? {
-            _id: debugParent._id,
-            unitName: debugParent.unitName,
-            unitsCount: debugParent.units?.length,
-            unitIds: debugParent.units?.map(u => u._id)
-          } : null
+          collectionsSearched: collections.map(c => c.name),
+          suggestion: "Make sure the subtopic was saved via Spring Boot backend first"
         }
       });
     }
 
-    console.log("✅ AI video URL saved successfully!", {
-      location: updateLocation,
-      collection: updatedCollection,
-      matched: result.matchedCount,
-      modified: result.modifiedCount
-    });
+    console.log("✅ AI video URL saved successfully! Location:", updateLocation, "Collection:", updatedCollection);
 
     res.json({
       status: "ok",
