@@ -158,7 +158,6 @@ app.get("/api/debug-subtopic/:id", async (req, res) => {
     let foundCollection = null;
     let foundLocation = null;
 
-
     for (const collectionInfo of collections) {
       const collectionName = collectionInfo.name;
       const collection = dbConn.collection(collectionName);
@@ -262,9 +261,9 @@ app.get("/api/debug-subtopic/:id", async (req, res) => {
 // ✅ FIXED: Update Subtopic AI Video URL for Spring Boot structure
 app.put("/api/updateSubtopicVideo", async (req, res) => {
   try {
-    const { subtopicId, aiVideoUrl, dbname = "professional" } = req.body;
+    const { subtopicId, parentId, aiVideoUrl, dbname = "professional", subjectName } = req.body;
 
-    console.log("🔄 Updating subtopic AI video:", { subtopicId, aiVideoUrl, dbname });
+    console.log("🔄 Updating subtopic AI video:", { subtopicId, parentId, aiVideoUrl, dbname, subjectName });
 
     if (!subtopicId || !aiVideoUrl) {
       return res.status(400).json({
@@ -277,11 +276,10 @@ app.put("/api/updateSubtopicVideo", async (req, res) => {
     let updateLocation = "unknown";
     let updatedCollection = "unknown";
 
-    // Search through all collections
-    const collections = await dbConn.listCollections().toArray();
+    // Determine which collection to search in
+    const targetCollections = subjectName ? [subjectName] : await dbConn.listCollections().toArray().then(cols => cols.map(c => c.name));
 
-    for (const collectionInfo of collections) {
-      const collectionName = collectionInfo.name;
+    for (const collectionName of targetCollections) {
       const collection = dbConn.collection(collectionName);
 
       // Try to update as nested unit first (most common case)
@@ -322,6 +320,25 @@ app.put("/api/updateSubtopicVideo", async (req, res) => {
         }
       } catch (e) {
         // Not a valid ObjectId, continue
+        console.log(`⚠️ Could not use ObjectId for ${subtopicId} in ${collectionName}: ${e.message}`);
+      }
+
+      // Try with string ID
+      result = await collection.updateOne(
+        { _id: subtopicId },
+        {
+          $set: {
+            aiVideoUrl: aiVideoUrl,
+            updatedAt: new Date()
+          }
+        }
+      );
+
+      if (result.matchedCount > 0) {
+        updateLocation = "main_document_string";
+        updatedCollection = collectionName;
+        console.log(`✅ Updated main document with string ID in ${collectionName}`);
+        break;
       }
     }
 
@@ -330,11 +347,25 @@ app.put("/api/updateSubtopicVideo", async (req, res) => {
     if (!result || result.matchedCount === 0) {
       console.log("❌ No documents matched in any collection.");
 
+      // Enhanced debugging: Show what's actually in the database
+      let debugInfo = {};
+      for (const collectionName of targetCollections.slice(0, 3)) {
+        const collection = dbConn.collection(collectionName);
+        const sampleDocs = await collection.find({}).limit(3).toArray();
+        debugInfo[collectionName] = sampleDocs.map(doc => ({
+          _id: doc._id,
+          unitName: doc.unitName,
+          hasUnits: !!doc.units,
+          units: doc.units?.map(u => ({ id: u.id, unitName: u.unitName })) || []
+        }));
+      }
+
       return res.status(404).json({
         error: "Subtopic not found. The subtopic might not exist or was not saved properly.",
         subtopicId: subtopicId,
         debug: {
-          collectionsSearched: collections.map(c => c.name),
+          collectionsSearched: targetCollections,
+          sampleData: debugInfo,
           suggestion: "Make sure the subtopic was saved via Spring Boot backend first"
         }
       });
@@ -441,6 +472,58 @@ app.get("/api/inspect-database", async (req, res) => {
     });
 
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ✅ NEW: Enhanced debug endpoint that searches across all collections
+app.get("/api/debug-subtopic-all/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { dbname = "professional" } = req.query;
+
+    console.log("🔍 Debugging subtopic across ALL collections:", id);
+
+    const dbConn = getDB(dbname);
+    const collections = await dbConn.listCollections().toArray();
+    const results = {};
+
+    for (const collectionInfo of collections) {
+      const collectionName = collectionInfo.name;
+      const collection = dbConn.collection(collectionName);
+
+      // Search as nested unit
+      const nestedResult = await collection.findOne({ "units.id": id });
+
+      // Search as main document with ObjectId
+      let mainResult = null;
+      try {
+        mainResult = await collection.findOne({ _id: new ObjectId(id) });
+      } catch (e) {
+        // Ignore ObjectId errors
+      }
+
+      // Search as main document with string
+      const mainResultString = await collection.findOne({ _id: id });
+
+      if (nestedResult || mainResult || mainResultString) {
+        results[collectionName] = {
+          foundAsNested: !!nestedResult,
+          foundAsMain: !!(mainResult || mainResultString),
+          document: nestedResult || mainResult || mainResultString
+        };
+      }
+    }
+
+    res.json({
+      found: Object.keys(results).length > 0,
+      subtopicId: id,
+      results: results,
+      collectionsSearched: collections.map(c => c.name)
+    });
+
+  } catch (err) {
+    console.error("❌ Debug all error:", err);
     res.status(500).json({ error: err.message });
   }
 });
