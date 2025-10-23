@@ -324,7 +324,7 @@
           console.log("🔍 Debugging subtopic location...");
 
           // Try debug endpoint with subjectName
-          const debugResponse = await fetch(`https://ai-generative-rhk1.onrender.com/api/debug-subtopic/${subtopicId}?dbname=${dbname}&subjectName=${encodeURIComponent(subjectName)}`);
+          const debugResponse = await fetch(`https://ai-generative-rhk1.onrender.com/api/debug-subtopic/${parentId}?dbname=${dbname}&subjectName=${encodeURIComponent(subjectName)}`);
           console.log("📊 Debug result with subjectName sample:");
           let debugData = {};
           if (debugResponse.ok) {
