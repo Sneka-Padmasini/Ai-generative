@@ -358,15 +358,30 @@ app.put("/api/updateSubtopicVideo", async (req, res) => {
       // Try multiple update strategies
 
       // Strategy 1: Update nested unit using units._id field
-      result = await collection.updateOne(
-        { "units._id": subtopicId },
-        {
-          $set: {
-            "units.$.aiVideoUrl": aiVideoUrl,
-            "units.$.updatedAt": new Date()
+      // Strategy 1: Update nested unit using units._id (with ObjectId)
+      try {
+        result = await collection.updateOne(
+          { "units._id": new ObjectId(subtopicId) },
+          {
+            $set: {
+              "units.$.aiVideoUrl": aiVideoUrl,
+              "units.$.updatedAt": new Date()
+            }
           }
+        );
+
+        if (result.matchedCount > 0) {
+          updateLocation = "nested_unit_ObjectId";
+          updatedCollection = collectionName;
+          updateField = "units._id (ObjectId)";
+          console.log(`✅ Updated nested unit using units._id (ObjectId) in ${collectionName}`);
+          break;
         }
-      );
+      } catch (e) {
+        console.log(`⚠️ Could not cast subtopicId to ObjectId: ${e.message}`);
+      }
+      console.log("🧠 MongoDB update result:", result);
+
 
       if (result.matchedCount > 0) {
         updateLocation = "nested_unit";
