@@ -146,29 +146,33 @@ app.post("/generate-and-upload", async (req, res) => {
 app.get("/api/debug-subtopic/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { dbname = "professional" } = req.query;
+    const { dbname = "professional", subjectName } = req.query;
 
     console.log("🔍 Debugging subtopic in Spring Boot structure:", id);
 
     const dbConn = getDB(dbname);
 
-    // Get all collections to find where the subtopic exists
-    const collections = await dbConn.listCollections().toArray();
+    // Determine which collections to search
+    const collectionsToSearch = subjectName ? [subjectName] : await dbConn.listCollections().toArray().then(cols => cols.map(c => c.name));
+
     let foundSubtopic = null;
     let foundCollection = null;
     let foundLocation = null;
+    let foundField = null;
 
-    for (const collectionInfo of collections) {
-      const collectionName = collectionInfo.name;
+    for (const collectionName of collectionsToSearch) {
       const collection = dbConn.collection(collectionName);
 
-      // Search 1: As main document
+      console.log(`🔍 Searching in collection: ${collectionName}`);
+
+      // Search 1: As main document with ObjectId
       try {
         const mainDoc = await collection.findOne({ _id: new ObjectId(id) });
         if (mainDoc) {
           foundSubtopic = mainDoc;
           foundCollection = collectionName;
           foundLocation = "main_document";
+          foundField = "_id";
           console.log(`✅ Found as main document in ${collectionName}`);
           break;
         }
@@ -176,42 +180,96 @@ app.get("/api/debug-subtopic/:id", async (req, res) => {
         // Not a valid ObjectId, continue
       }
 
-      // Search 2: In units array (nested subtopic)
+      // Search 2: As main document with string ID
+      const mainDocString = await collection.findOne({ _id: id });
+      if (mainDocString) {
+        foundSubtopic = mainDocString;
+        foundCollection = collectionName;
+        foundLocation = "main_document";
+        foundField = "_id (string)";
+        console.log(`✅ Found as main document with string ID in ${collectionName}`);
+        break;
+      }
+
+      // Search 3: In units array with _id field
+      const parentWithUnitsId = await collection.findOne({
+        "units._id": id
+      });
+
+      if (parentWithUnitsId) {
+        const parentDoc = parentWithUnitsId;
+        const nestedUnit = parentDoc.units.find(unit => unit._id === id);
+        if (nestedUnit) {
+          foundSubtopic = nestedUnit;
+          foundCollection = collectionName;
+          foundLocation = "nested_in_units";
+          foundField = "units._id";
+          foundSubtopic.parentDocument = {
+            _id: parentDoc._id,
+            unitName: parentDoc.unitName
+          };
+          console.log(`✅ Found as nested unit with _id in ${collectionName}`);
+          break;
+        }
+      }
+
+      // Search 4: In units array with id field
       const parentWithUnits = await collection.findOne({
         "units.id": id
       });
 
       if (parentWithUnits) {
-        const nestedUnit = parentWithUnits.units.find(unit => unit.id === id);
+        const parentDoc = parentWithUnits;
+        const nestedUnit = parentDoc.units.find(unit => unit.id === id);
         if (nestedUnit) {
           foundSubtopic = nestedUnit;
           foundCollection = collectionName;
           foundLocation = "nested_in_units";
+          foundField = "units.id";
           foundSubtopic.parentDocument = {
-            _id: parentWithUnits._id,
-            unitName: parentWithUnits.unitName
+            _id: parentDoc._id,
+            unitName: parentDoc.unitName
           };
-          console.log(`✅ Found as nested unit in ${collectionName}`);
+          console.log(`✅ Found as nested unit with id in ${collectionName}`);
           break;
         }
       }
 
-      // Search 3: In any field containing this ID
-      const anyDoc = await collection.findOne({
+      // Search 5: In any array field containing objects with _id
+      const anyArrayDoc = await collection.findOne({
         $or: [
-          { _id: id },
+          { "units._id": id },
           { "units.id": id },
-          { parentId: id },
-          { rootUnitId: id }
+          { "subtopics._id": id },
+          { "subtopics.id": id },
+          { "children._id": id },
+          { "children.id": id }
         ]
       });
 
-      if (anyDoc) {
-        foundSubtopic = anyDoc;
-        foundCollection = collectionName;
-        foundLocation = "any_field";
-        console.log(`✅ Found in ${collectionName} in field search`);
-        break;
+      if (anyArrayDoc) {
+        // Find which array and which field
+        const arraysToCheck = ['units', 'subtopics', 'children'];
+        for (const arrayField of arraysToCheck) {
+          if (anyArrayDoc[arrayField]) {
+            const foundUnit = anyArrayDoc[arrayField].find(item =>
+              item._id === id || item.id === id
+            );
+            if (foundUnit) {
+              foundSubtopic = foundUnit;
+              foundCollection = collectionName;
+              foundLocation = `nested_in_${arrayField}`;
+              foundField = `${arrayField}.${foundUnit._id === id ? '_id' : 'id'}`;
+              foundSubtopic.parentDocument = {
+                _id: anyArrayDoc._id,
+                unitName: anyArrayDoc.unitName
+              };
+              console.log(`✅ Found in ${arrayField} array in ${collectionName}`);
+              break;
+            }
+          }
+        }
+        if (foundSubtopic) break;
       }
     }
 
@@ -220,25 +278,35 @@ app.get("/api/debug-subtopic/:id", async (req, res) => {
         found: true,
         location: foundLocation,
         collection: foundCollection,
+        field: foundField,
         subtopic: foundSubtopic,
         message: "Subtopic found successfully"
       });
     } else {
-      // List available collections and sample data for debugging
-      const collectionSamples = {};
-      for (const collectionInfo of collections.slice(0, 5)) {
-        const collectionName = collectionInfo.name;
-        const sampleDocs = await dbConn.collection(collectionName)
-          .find({})
-          .limit(2)
-          .toArray();
+      // Enhanced debugging: Show what's actually in the target collection
+      const debugInfo = {};
+      for (const collectionName of collectionsToSearch.slice(0, 2)) {
+        const collection = dbConn.collection(collectionName);
+        const sampleDocs = await collection.find({}).limit(2).toArray();
 
-        collectionSamples[collectionName] = sampleDocs.map(doc => ({
-          _id: doc._id,
-          unitName: doc.unitName,
-          hasUnits: !!doc.units,
-          unitsCount: doc.units?.length || 0
-        }));
+        debugInfo[collectionName] = sampleDocs.map(doc => {
+          const docInfo = {
+            _id: doc._id,
+            unitName: doc.unitName,
+            hasUnits: !!doc.units,
+          };
+
+          if (doc.units) {
+            docInfo.units = doc.units.map(unit => ({
+              _id: unit._id,
+              id: unit.id,
+              unitName: unit.unitName,
+              matchesSearch: (unit._id === id || unit.id === id)
+            }));
+          }
+
+          return docInfo;
+        });
       }
 
       res.json({
@@ -246,8 +314,9 @@ app.get("/api/debug-subtopic/:id", async (req, res) => {
         message: "Subtopic not found in any collection",
         debug: {
           searchedId: id,
-          availableCollections: collections.map(c => c.name),
-          sampleData: collectionSamples
+          collectionsSearched: collectionsToSearch,
+          sampleData: debugInfo,
+          suggestion: "Check if the subtopic was properly saved with the correct ID field"
         }
       });
     }
@@ -275,14 +344,39 @@ app.put("/api/updateSubtopicVideo", async (req, res) => {
     let result;
     let updateLocation = "unknown";
     let updatedCollection = "unknown";
+    let updateField = "unknown";
 
     // Determine which collection to search in
     const targetCollections = subjectName ? [subjectName] : await dbConn.listCollections().toArray().then(cols => cols.map(c => c.name));
 
+    console.log(`🔍 Searching in collections: ${targetCollections.join(', ')}`);
+
     for (const collectionName of targetCollections) {
       const collection = dbConn.collection(collectionName);
+      console.log(`🔍 Attempting update in collection: ${collectionName}`);
 
-      // Try to update as nested unit first (most common case)
+      // Try multiple update strategies
+
+      // Strategy 1: Update nested unit using units._id field
+      result = await collection.updateOne(
+        { "units._id": subtopicId },
+        {
+          $set: {
+            "units.$.aiVideoUrl": aiVideoUrl,
+            "units.$.updatedAt": new Date()
+          }
+        }
+      );
+
+      if (result.matchedCount > 0) {
+        updateLocation = "nested_unit";
+        updatedCollection = collectionName;
+        updateField = "units._id";
+        console.log(`✅ Updated nested unit using units._id in ${collectionName}`);
+        break;
+      }
+
+      // Strategy 2: Update nested unit using units.id field
       result = await collection.updateOne(
         { "units.id": subtopicId },
         {
@@ -296,11 +390,12 @@ app.put("/api/updateSubtopicVideo", async (req, res) => {
       if (result.matchedCount > 0) {
         updateLocation = "nested_unit";
         updatedCollection = collectionName;
-        console.log(`✅ Updated nested unit in ${collectionName}`);
+        updateField = "units.id";
+        console.log(`✅ Updated nested unit using units.id in ${collectionName}`);
         break;
       }
 
-      // Try to update as main document
+      // Strategy 3: Update as main document with ObjectId
       try {
         result = await collection.updateOne(
           { _id: new ObjectId(subtopicId) },
@@ -315,15 +410,15 @@ app.put("/api/updateSubtopicVideo", async (req, res) => {
         if (result.matchedCount > 0) {
           updateLocation = "main_document";
           updatedCollection = collectionName;
-          console.log(`✅ Updated main document in ${collectionName}`);
+          updateField = "_id (ObjectId)";
+          console.log(`✅ Updated main document with ObjectId in ${collectionName}`);
           break;
         }
       } catch (e) {
-        // Not a valid ObjectId, continue
-        console.log(`⚠️ Could not use ObjectId for ${subtopicId} in ${collectionName}: ${e.message}`);
+        console.log(`⚠️ Could not use ObjectId for ${subtopicId}: ${e.message}`);
       }
 
-      // Try with string ID
+      // Strategy 4: Update as main document with string ID
       result = await collection.updateOne(
         { _id: subtopicId },
         {
@@ -335,29 +430,75 @@ app.put("/api/updateSubtopicVideo", async (req, res) => {
       );
 
       if (result.matchedCount > 0) {
-        updateLocation = "main_document_string";
+        updateLocation = "main_document";
         updatedCollection = collectionName;
+        updateField = "_id (string)";
         console.log(`✅ Updated main document with string ID in ${collectionName}`);
         break;
       }
+
+      // Strategy 5: Use arrayFilters for complex nested updates
+      try {
+        // This handles cases where we need to update a specific element in an array
+        result = await collection.updateOne(
+          { "units": { $exists: true } },
+          {
+            $set: {
+              "units.$[unit].aiVideoUrl": aiVideoUrl,
+              "units.$[unit].updatedAt": new Date()
+            }
+          },
+          {
+            arrayFilters: [
+              {
+                $or: [
+                  { "unit._id": subtopicId },
+                  { "unit.id": subtopicId }
+                ]
+              }
+            ]
+          }
+        );
+
+        if (result.matchedCount > 0) {
+          updateLocation = "nested_unit_arrayFilters";
+          updatedCollection = collectionName;
+          updateField = "arrayFilters";
+          console.log(`✅ Updated using arrayFilters in ${collectionName}`);
+          break;
+        }
+      } catch (e) {
+        console.log(`⚠️ Array filters failed: ${e.message}`);
+      }
     }
 
-    console.log("🔍 Final result - Matched:", result?.matchedCount, "Modified:", result?.modifiedCount);
+    console.log("🔍 Final update result - Matched:", result?.matchedCount, "Modified:", result?.modifiedCount);
 
     if (!result || result.matchedCount === 0) {
       console.log("❌ No documents matched in any collection.");
 
       // Enhanced debugging: Show what's actually in the database
       let debugInfo = {};
-      for (const collectionName of targetCollections.slice(0, 3)) {
+      for (const collectionName of targetCollections.slice(0, 2)) {
         const collection = dbConn.collection(collectionName);
         const sampleDocs = await collection.find({}).limit(3).toArray();
-        debugInfo[collectionName] = sampleDocs.map(doc => ({
-          _id: doc._id,
-          unitName: doc.unitName,
-          hasUnits: !!doc.units,
-          units: doc.units?.map(u => ({ id: u.id, unitName: u.unitName })) || []
-        }));
+        debugInfo[collectionName] = sampleDocs.map(doc => {
+          const docInfo = {
+            _id: doc._id,
+            unitName: doc.unitName,
+            hasUnits: !!doc.units,
+          };
+
+          if (doc.units) {
+            docInfo.units = doc.units.map(unit => ({
+              _id: unit._id,
+              id: unit.id,
+              unitName: unit.unitName
+            }));
+          }
+
+          return docInfo;
+        });
       }
 
       return res.status(404).json({
@@ -366,113 +507,26 @@ app.put("/api/updateSubtopicVideo", async (req, res) => {
         debug: {
           collectionsSearched: targetCollections,
           sampleData: debugInfo,
-          suggestion: "Make sure the subtopic was saved via Spring Boot backend first"
+          suggestion: "Make sure the subtopic was saved via Spring Boot backend first and check the ID field used"
         }
       });
     }
 
-    console.log("✅ AI video URL saved successfully! Location:", updateLocation, "Collection:", updatedCollection);
+    console.log("✅ AI video URL saved successfully! Location:", updateLocation, "Collection:", updatedCollection, "Field:", updateField);
 
     res.json({
       status: "ok",
       updated: result.modifiedCount,
+      matched: result.matchedCount,
       location: updateLocation,
       collection: updatedCollection,
+      field: updateField,
       message: "AI video URL saved successfully"
     });
 
   } catch (err) {
     console.error("❌ Error updating subtopic:", err);
     res.status(500).json({ error: "Failed to update subtopic: " + err.message });
-  }
-});
-
-// ✅ NEW: Direct Spring Boot communication endpoint
-app.post("/api/communicate-with-springboot", async (req, res) => {
-  try {
-    const { action, data, springBootUrl = "http://localhost:8080" } = req.body;
-
-    console.log("🔄 Communicating with Spring Boot:", { action, springBootUrl });
-
-    let response;
-
-    switch (action) {
-      case "debugSubtopic":
-        response = await axios.get(`${springBootUrl}/api/debug-subtopic/${data.subtopicId}?dbname=${data.dbname}`);
-        break;
-
-      case "updateSubtopicVideo":
-        response = await axios.put(`${springBootUrl}/api/updateSubtopicVideo`, data);
-        break;
-
-      default:
-        throw new Error("Unknown action: " + action);
-    }
-
-    res.json({
-      status: "ok",
-      springBootResponse: response.data
-    });
-
-  } catch (err) {
-    console.error("❌ Spring Boot communication error:", err.message);
-    res.status(500).json({
-      error: "Failed to communicate with Spring Boot: " + err.message
-    });
-  }
-});
-
-// ✅ Health check endpoint
-app.get("/health", (req, res) => {
-  res.json({
-    status: "OK",
-    timestamp: new Date().toISOString(),
-    service: "Node.js AI Video Backend"
-  });
-});
-
-app.get("/api/test", (req, res) => {
-  res.json({
-    message: "Node.js backend is working!",
-    purpose: "AI Video Generation for Spring Boot subtopics"
-  });
-});
-
-// ✅ NEW: Database inspection endpoint
-app.get("/api/inspect-database", async (req, res) => {
-  try {
-    const { dbname = "professional" } = req.query;
-    const dbConn = getDB(dbname);
-
-    const collections = await dbConn.listCollections().toArray();
-    const databaseInfo = {};
-
-    for (const collectionInfo of collections) {
-      const collectionName = collectionInfo.name;
-      const collection = dbConn.collection(collectionName);
-
-      const count = await collection.countDocuments();
-      const sample = await collection.find({}).limit(3).toArray();
-
-      databaseInfo[collectionName] = {
-        documentCount: count,
-        sample: sample.map(doc => ({
-          _id: doc._id,
-          unitName: doc.unitName,
-          parentId: doc.parentId,
-          hasUnits: !!doc.units,
-          units: doc.units?.map(u => ({ id: u.id, unitName: u.unitName })) || []
-        }))
-      };
-    }
-
-    res.json({
-      database: dbname,
-      collections: databaseInfo
-    });
-
-  } catch (err) {
-    res.status(500).json({ error: err.message });
   }
 });
 
@@ -492,7 +546,12 @@ app.get("/api/debug-subtopic-all/:id", async (req, res) => {
       const collectionName = collectionInfo.name;
       const collection = dbConn.collection(collectionName);
 
-      // Search as nested unit
+      console.log(`🔍 Searching in collection: ${collectionName}`);
+
+      // Search as nested unit with _id
+      const nestedResultId = await collection.findOne({ "units._id": id });
+
+      // Search as nested unit with id
       const nestedResult = await collection.findOne({ "units.id": id });
 
       // Search as main document with ObjectId
@@ -506,11 +565,12 @@ app.get("/api/debug-subtopic-all/:id", async (req, res) => {
       // Search as main document with string
       const mainResultString = await collection.findOne({ _id: id });
 
-      if (nestedResult || mainResult || mainResultString) {
+      if (nestedResultId || nestedResult || mainResult || mainResultString) {
         results[collectionName] = {
-          foundAsNested: !!nestedResult,
+          foundAsNestedWith_Id: !!nestedResultId,
+          foundAsNestedWithId: !!nestedResult,
           foundAsMain: !!(mainResult || mainResultString),
-          document: nestedResult || mainResult || mainResultString
+          document: nestedResultId || nestedResult || mainResult || mainResultString
         };
       }
     }
@@ -526,6 +586,22 @@ app.get("/api/debug-subtopic-all/:id", async (req, res) => {
     console.error("❌ Debug all error:", err);
     res.status(500).json({ error: err.message });
   }
+});
+
+// ✅ Health check endpoint
+app.get("/health", (req, res) => {
+  res.json({
+    status: "OK",
+    timestamp: new Date().toISOString(),
+    service: "Node.js AI Video Backend"
+  });
+});
+
+app.get("/api/test", (req, res) => {
+  res.json({
+    message: "Node.js backend is working!",
+    purpose: "AI Video Generation for Spring Boot subtopics"
+  });
 });
 
 // ✅ Start server
