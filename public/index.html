@@ -186,7 +186,6 @@
     </section>
   </main>
 
-
   <script>
     document.addEventListener("DOMContentLoaded", () => {
       const urlParams = new URLSearchParams(window.location.search);
@@ -299,12 +298,10 @@
         }
       });
 
-      // In your AI video page JavaScript, update the save function:
       // save lesson - USING ONLY NODE.JS BACKEND
       document.getElementById("saveLessonBtn").addEventListener("click", async () => {
         try {
-          //const aiVideoUrlToSave = aiVideoUrl || localStorage.getItem("generatedAIVideoUrl") || "";
-          const aiVideoUrlToSave = "sample";
+          const aiVideoUrlToSave = aiVideoUrl || localStorage.getItem("generatedAIVideoUrl") || "sample";
           if (!aiVideoUrlToSave) {
             alert("Please generate an AI video first before saving");
             return;
@@ -327,8 +324,8 @@
           console.log("🔍 Debugging subtopic location...");
 
           // Try debug endpoint with subjectName
-          const debugResponse = await fetch(`https://ai-generative-rhk1.onrender.com/api/debug-subtopic/${parentId}?dbname=${dbname}&subjectName=${encodeURIComponent(subjectName)}`);
-
+          const debugResponse = await fetch(`https://ai-generative-rhk1.onrender.com/api/debug-subtopic/${subtopicId}?dbname=${dbname}&subjectName=${encodeURIComponent(subjectName)}`);
+          console.log("📊 Debug result with subjectName sample:");
           let debugData = {};
           if (debugResponse.ok) {
             debugData = await debugResponse.json();
@@ -361,7 +358,7 @@
             return;
           }
 
-          // Save using Node.js backend ONLY (remove Spring Boot fallback)
+          // Save using Node.js backend ONLY
           console.log("🚀 Saving AI video via Node.js backend...");
           const saveResponse = await fetch("https://ai-generative-rhk1.onrender.com/api/updateSubtopicVideo", {
             method: "PUT",
@@ -388,7 +385,7 @@
             alert("🎉 AI Video saved successfully to your subtopic!");
 
             // Add success parameters to return URL
-            const returnUrl = new URL(returnTo);
+            const returnUrl = new URL(returnTo, window.location.origin);
             returnUrl.searchParams.set("saved", "true");
             returnUrl.searchParams.set("message", "AI+video+saved+successfully");
             returnUrl.searchParams.set("videoUrl", encodeURIComponent(aiVideoUrlToSave));
